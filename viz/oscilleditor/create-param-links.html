@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+</head>
+<body>
+
+Paste JSON params into this box: (then links will be created below the box)<br>
+<textarea id="jsonInput" rows="40" cols="100"></textarea>
+<br>
+<br>
+Link prefix / base URL: <input type="text" id="baseUrl" value="http://replicationapp.hallucination-research.localhost/?" style="width:60%">
+<br>
+<br>
+<output id="linkOutput"></output>
+
+<script type="text/javascript" src="param-export-import.js"></script>
+<script type="text/javascript">
+document.getElementById("baseUrl").addEventListener("change", refreshIt);
+document.getElementById("jsonInput").addEventListener("change", refreshIt);
+
+function refreshIt() {
+	let original = document.getElementById("jsonInput").value;
+
+	// let baseUrlWithQuestionMark = "http://replicationapp.hallucination-research.localhost/?";
+	let baseUrlWithQuestionMark = document.getElementById("baseUrl").value;
+
+	// the input field might contain not just ONE json object, but several
+	// maybe not even separated by anything consistent
+	// maybe just separated by }{
+	const regexJsonEndAndStartOfNext = /\}\s*\{/g;
+
+	document.getElementById("linkOutput").value = "";
+	let substrLength;
+	do {
+		const searchResult = regexJsonEndAndStartOfNext.exec(original);
+		substrLength = original.length;
+		let part = original;
+		if (searchResult != null) {
+			// console.log(searchResult, regexJsonEndAndStartOfNext.lastIndex);
+			substrLength = searchResult.index+1;
+		}
+		part = original.substr(0, substrLength);
+		// console.log(part);
+		const url = tryMakeUrl(part, baseUrlWithQuestionMark);
+		if (url) {
+			// console.log(url);
+			const ahref = document.createElement("a");
+			ahref.href = url;
+			ahref.appendChild(document.createTextNode(url));
+			document.getElementById("linkOutput").appendChild(ahref);
+			original = original.substr(substrLength);
+			regexJsonEndAndStartOfNext.lastIndex = 0;
+		}
+		else {
+			// console.log("ERROR");
+			document.getElementById("linkOutput").appendChild(document.createTextNode("ERROR"));
+			// don't cut original, and don't reset lastIndex to 0
+			// instead continue searching forward in the same string, taking larger and larger substrings from it
+			// the idea is that maybe the parsing failed because our }{ match was not a real top-level match but maybe inside a string or something
+		}
+		document.getElementById("linkOutput").appendChild(document.createElement("br"));
+		document.getElementById("linkOutput").appendChild(document.createElement("br"));
+	}
+	while (substrLength < original.length);
+}
+</script>
+
+</body>
+</html>

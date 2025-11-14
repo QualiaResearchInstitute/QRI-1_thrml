@@ -1,0 +1,72 @@
+Geometry-Aware CLIP Service (pip workflow)
+==========================================
+
+This folder contains a standalone FastAPI service that wraps the tuned CLIP encoder
+we use in resonance-transformer experiments.  Follow the steps below to run it
+locally and connect it to `oscilleditor`.
+
+Prerequisites
+-------------
+- Python 3.10 or newer
+- pip (or uv/pipx if you prefer)
+- A GPU with recent CUDA drivers is recommended but not required
+- Internet access the first time you download the CLIP weights from Hugging Face
+
+Setup
+-----
+1. Create a virtual environment (recommended):
+       python3 -m venv .venv
+       source .venv/bin/activate
+
+2. Install dependencies:
+       pip install --upgrade pip
+       pip install -r requirements.txt
+
+3. (Optional) Place fine-tuned projection weights:
+       - If you have a geometry-regularized projection matrix, copy it to this
+         directory and set the environment variable `GEOMETRY_CLIP_PROJECTION_PATH`
+         to the filename (e.g. `export GEOMETRY_CLIP_PROJECTION_PATH=projection.pt`).
+       - If you do not have tuned weights yet, the encoder falls back to the
+         improved Xavier initialization described in the STV validation notes.
+
+Running the service
+-------------------
+From this directory run:
+    uvicorn service:app --host 0.0.0.0 --port 8001
+
+Environment overrides:
+- `GEOMETRY_CLIP_DEVICE` (e.g. `cuda`, `cuda:1`, `mps`, `cpu`)
+- `GEOMETRY_CLIP_MODEL` (default `openai/clip-vit-base-patch32`)
+- `GEOMETRY_CLIP_LATENT_DIM` (default `256`)
+- `GEOMETRY_CLIP_PROJECTION_PATH` (path to fine-tuned projection weights)
+- `GEOMETRY_CLIP_PORT`, `GEOMETRY_CLIP_HOST`, `GEOMETRY_CLIP_RELOAD`
+
+Example usage
+-------------
+With the server running:
+1. Embed text:
+       curl -X POST http://localhost:8001/embed/text \
+            -H "Content-Type: application/json" \
+            -d '{"text": "synchronized radiant breathing"}'
+
+2. Embed an image (base64):
+       python client_demo.py embed-image path/to/image.png
+
+3. Get recommendations:
+       python client_demo.py recommend "gentle symmetry" presets/sample_presets.json
+
+Integrating with `oscilleditor`
+-------------------------------
+- Start the CLIP service before launching the WebGL application.
+- In the browser UI, call the endpoints to:
+    * Encode user uploads for tagging
+    * Fetch preset recommendations via `/recommend`
+    * Cache embeddings for assets/presets (store results in your own DB/JSON)
+
+Notes
+-----
+- The first request may take a few seconds while CLIP downloads weights.
+- For production you may want a lightweight vector store (FAISS, pgvector, etc.).
+- If you hit CUDA OOM errors, switch to CPU (`export GEOMETRY_CLIP_DEVICE=cpu`).
+
+

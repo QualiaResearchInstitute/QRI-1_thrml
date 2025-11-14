@@ -1,0 +1,248 @@
+HOW TO RUN
+
+Don't just open index.html as a local file from disk, it won't work. (Because of browser security settings that block it from downloading other files via XmlHttpRequest / fetch)
+You need to run it from a webserver. Any webserver will do. For example
+	python3 -m http.server
+
+__________________________
+
+
+Feature wishlist from Andrés 2024-11-11
+~4 photos with a variety of scenes
+
+4 different effects: 
+    drifting - easier
+    symmetry detection & amplification - harder
+    enhanced pattern recognition - deepdream, less important because everyone is doing it
+    tracers - ofc has no effect on still image, but we can do it on the other effects
+
+different spatial frequencies = yes, done by changing the coupling kernels
+
+in which various ways could the coupled oscillators affect the image?
+symmetries at different scales, large and small
+modulating color channels
+modulating saturation
+color shifting
+prefer different colors? yellow/blue vs purple/green vs earthy
+strengthen high frequencies in the image (blend in highpass filtered version)
+blend in lower layers of deepdream image - edges and curves
+
+sliders are for internal use, don't need to be testsubject-friendly
+
+the distortion is currently just southwest-northeast
+we should use two color channels for it maybe, so it can distort in all directions?
+
+
+REMOVE PROCESSING LIBRARY
+
+gut feeling tells me that p5.js won't be very useful for this project
+because most of the work will be inside the shader code
+and p5.js is already getting in our way with strange sizing bugs
+i think i should just convert everything to raw js
+even though the webgl setup is annoying, we just have to do it once
+
+but hmm, i have no experience with programmatic access to video frames
+it's apparently easy with p5.js, how hard is it otherwise?
+add video tag to dom like so
+    <video crossorigin="anonymous" style="display: none;" width="1920" height="1080" autoplay="true" loop="true"><source src="assets/noods.mp4"></video>
+https://developer.mozilla.org/en-US/docs/Web/Media/Audio_and_video_manipulation
+https://github.com/mdn/dom-examples/blob/main/webgl-examples/tutorial/sample8/webgl-demo.js#L228
+
+
+
+OSCILLATORS
+
+first of all i need to get some coupled oscillators running
+(we _could_ precalculate them and generate a video, but real time is preferable)
+i downloaded https://qri.org/demo/coupled_kernels and measured the frame time for just the simulation itself (without graphics)
+the frame time for 200*200 was like 30 ms on my computer, which is already too slow, and ideally we'd want to crank up the resolution to 1920*1080
+(i guess we _could_ run a more lowrez simulation and then scale it up for rendering, but that would mean we couldn't use it for really high spatial frequency effects)
+so i guess my best option is to write a shader!
+(another option is to compile C to webassembly)
+this assumes we want to run in the browser
+if we on the other hand run native programs, that opens up doors to more hardcore optimization,
+but makes sharing it way harder.
+also collaboration would get harder, i assume there would be fewer collaborators with relevant experience
+
+each dot stores naturalFrequency and phase
+i could put those in 2d texture, r and g channel
+phase is naturally 0-2*PI but i'll store it as 0-1
+or, june tells me that it's easier to store the phase as a complex number rather than an angle
+frequency seems to be... something higher, not sure yet how to convert down to 0-1
+
+i implemented coupled oscillators in a separate shader
+i copied the basics from andré's javascript implementation at https://qri.org/demo/coupled_kernels and 5_levers_chaos.js
+the core math is simple, but took some work to set it up with WebGL
+just as with many image filters, the new value of each cell depends on the old values of neighbors of the cell (the laplacian)
+typically one uses two images to implement such filters. old and new. and swap between them.
+you can't simply pass in two textures to a glsl shader and read from one and write to the other
+there's no way to simply write to a texture from a shader
+instead, you write output pixels normally, but you have beforehand set up so that the output goes to a texture instead of the main canvas
+the relevant code rows for this output are
+	g_oscillatorFramebuffer = g_webglContext.createFramebuffer();
+	gl.bindFramebuffer(gl.FRAMEBUFFER, g_oscillatorFramebuffer);
+	gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, oscillatorTexWrite, 0);
+
+there are several options for how to implement the coupled oscillators in glsl
+should the textures be floating-point or unsigned byte?
+should we store the phase as an angle, or as a complex number on the unit circle?
+i used floating point and angle phase for now
+
+the coupled oscillators are currently too slow if you use a large filter kernel
+i copied the continuous filter kernel implementation from https://qri.org/demo/standing_waves
+i want to optimize it
+one idea is to precalculate it into a texture - is that faster or slower? not sure
+another idea is to observe that it's a difference of gaussians, so we should be able to decompose it, see https://bartwronski.com/2020/02/03/separate-your-filters-svd-and-low-rank-approximation-of-image-filters/ or https://www.intel.com/content/www/us/en/developer/articles/technical/an-investigation-of-fast-real-time-gpu-based-image-blur-algorithms.html
+i don't fully understand the math for using more than 1 "rank"
+
+i would like to add a small canvas that just displays the filter kernel at the correct size
+and sliders to adjust all its parameters
+
+i feel that 4 arbitrary circles (with arbitrary width, height and distance from origin) seems excessively flexible
+you can for example get gaps between the hills
+and you can set them to cancel each other out
+i feel that it should be possible to simplify somehow, like with a truncated sin(x)/x thing
+or maybe just add/subtract a bunch of gaussians with increasing radii, but don't allow separately specifying distance AND width
+or maybe they become too weak (since their integral is unchanged)
+well, it's not important right now
+
+i observe that the simulation always has singularities where the phase rotates around and around
+i wonder if we can instead get travelling waves across the whole screen given the right starting phases, i should test it
+	const phase = (x / 20) % (2 * Math.PI); // plane waves
+yes, this worked fine
+
+
+IMAGE AFFECTING OSCILLATORS
+
+how could the main input image affect the oscillators?
+we brainstormed a few ideas
+use the image brightness or image edges (after edge detection algo) or the high frequencies of the image (after highpass filter)
+use it to set the oscillators' natural frequency
+or to "drive" the phase (bright values gives the phase a push each frame, dark values slow it down)
+or to set the coupling pattern (couple with neighbors of similar brightness, anti-couple with those of vastly different brightness)
+that last idea means we don't use our normal filter kernel at all
+
+i tried the brightness->frequency idea, it's somewhat interesting, patterns align to edges
+empirically, i've observed that waves are more tightly packed along edges
+does that mean that wave speed is slower there?
+so use canvas pixel brightness to set oscillator frequencies. lower frequency around edges
+i tried this, but the waves spacing refuses to change, even with vastly different oscillator frequencies
+so i guess the wave spacing is determined by... the kernel, perhaps?
+
+i tried the colorsimilarity->coupling idea, it means that we get "5meo dynamics" on big flat spaces and "dmt dynamics" at edges. not very nice actually
+i tried shrinking the kernel at edges. andré's suggestion. worked pretty good!
+
+
+QUASICRYSTALS
+
+https://qri1.gitlab.io/tactile-visualizer/hypnagogic_quasicrystals.html?Layers=4&Speed=0.2
+view-source:https://qri1.gitlab.io/tactile-visualizer/js/sketches/hypnagogic_quasicrystals.js
+e:\eroot\open_eye_visuals\Tepoz Workspace GDrive\hypnagogic_quasicrystals.js
+i want to add quasicrystals as an effect on top of the images
+shmedrix tried it with deepdream style transfer, but that didn't look good at all
+i think it's better to just them on top of the image as-is
+but the question is how to blend them. which blending mode.
+i think maybe none of the typical photoshop blending modes are perfect
+i have another idea that i've never tried to implement before
+along the edge lines of the quasicrystal (where it shifts the most from black to white or white to black),
+we want to increase the contrast of any edges that already exist in the main image (with the same orientation)!
+but if there is no edge there in the main image, do nothing, or maybe just add a tiny bit of an edge (like in kanisza triangle illusion)
+and if there is an edge but with the wrong orientation, maybe decrease its contrast / blur it
+since we have a limited number of test photos, we could manually align the quasicrystal edges with nice features in the photos, for example the long straight edge of the swimming pool
+
+
+LOTUS FLOWER VORTEX
+would also be cool to add as an effect
+
+
+
+the number of pinchpoints on 5meo according to andres is like 3 times lower than when we had an 8 radius kernel. so maybe a 24 kernel. but that's too slow, so scale down the grid instead. hmm, how to do that? render smaller plane to smaller texture, then render that texture to bigger plane
+or maybe keep the same texture we have today but draw only to a small corner of it. that way we could dynamically change strategy based on slider value
+
+try several layers at different scales
+try to add a form constant by running simulation, then log-polar transform
+try to use a depth map to scale the kernel
+the important idea is to explore different frequencies, so everything should have a frequency slider in the UI
+add ability to save all the parameters, for easier recreation later. probably in the URL
+
+try to use a depth map to scale the natural frequencies = affects the movement speed of the pattern, but not the size
+try to use a depth map to scale the kernel = success, looks cool! does it also affect the speed? well yes in one way, but not in another way. it looks like a scaled down version of the same the animation. the "wormy crawly" animation speed is unchanged, but since the worms are smaller, they move less distance over the same time period.
+
+
+OSCILLATOR ARTIFACTS
+there are some artifacts when the kernel gets small. a square-ish grid. why? i tried to get rid of it by increasing the sample square radius * 3 and the artifacts are still there, only lessened. but that made me discover another worrying effect: the desired pattern was _also_ lessened when i increased the sample square radius. is that because the outermost ring is negative and since it's based on a gaussian it actually has infinite width? and when i only sampled it inside a square, i cut off that infinite falloff sharply? maybe we should use something that actually goes down to 0 instead of an infinite gaussian that only approaches 0. maybe based on a sine wave instead.
+with the depth map, i noticed that the artifact pattern appears at some scales but not others. not just at minimum kernel size, but also in-between! it looks so bad that if we're going to use depth maps we _have_ to solve this.
+i'll ask andres for help with another filter that goes to 0, and ask ethan for help with separating the filter
+
+
+HOW TO BLEND SEVERAL LAYERS
+the phase is an angle in radians
+i can run it through a sine function to get a number between -1 and 1
+then blend like quasicrystals, ie multiply waves together?
+or maybe express the phase as a complex number and multiply those?
+then how to do the final blend with the source photo?
+
+should i run edge map and depth map simulations separately, and merge their output?
+i feel like the edge and depth map both control the pattern size, so maybe merge them for that purpose and run a single simulation
+but i feel like only the edge map controls the pattern speed, so don't merge them for that purpose
+
+
+
+sunday: talked to people
+monday: removed p5js
+tuesday: hike, shader setup for oscillations
+wednesday: oscillations work. correct ring formula. change size & frequency based on depthmap or edgemap
+thursday: expose all previously hardcoded params in GUI. scale down the canvas for performance
+friday: change from angles to complex numbers. add deepdream images
+
+
+
+
+
+
+
+
+
+Since we can't run multiple simulations (yet), as a hacky workaround, make it possible to run multiple videos, with sliders to change their speed and spatial scale. Use a tiling patterns to that any spatial scale works. We already run the simulation with pacman wraparound (torus topology) so it will tile naturally. To prepare for screen recording:
+* change the rendering in shader.frag to black&white or whatever I need
+* change the viewport so that we render the oscillatorTexture to screen at its native size, not scaled up. with this code:
+		// gl.viewport(0, g_webglContext.canvas.height - newOscillatorTextureHeight, newOscillatorTextureWidth, newOscillatorTextureHeight);
+		renderFullScreen();
+		// gl.viewport(0, 0, g_webglContext.canvas.width, g_webglContext.canvas.height);
+* make sure browser scaling is set to 100%
+* choose your kernel
+* run with as high resolution as you can. low framerate is ok
+* run until the simulation stabilizes into a steady state
+* use a screen capture program like for example OBS studio
+* set it up so it only captures the simulation part of the canvas, nothing else
+* record a short clip at 60 fps that goes through the cycle at least once
+* if your simulation framerate was low, extract only the frames where something changed from the previous frame. how? like so:
+	ffmpeg -i pattern100.mp4 -filter_complex "select=bitor(gt(scene\,0.01)\,eq(n\,0))" -vsync drop "frames/%04d.png"
+* otherwise just extract all frames like so:
+	ffmpeg -i pattern100.mp4 "frames/%04d.png"
+* manually look through the png files and keep just 1 full cycle, i.e find the frame where everything looks like in the beginning. delete subsequent frames.
+* reassemble the remaining pngs to a video file, like so:
+		ffmpeg -i frames/%04d.png -vcodec libx264 -b 3000k -r 30 -pix_fmt yuv420p texturelooped100.mp4
+	note that it doesn't work in firefox without the -pix_fmt yuv420p because then ff says:
+		Media resource http://hallucination-research.localhost/ReplicationApp_web/assets/texturelooped2.mp4 could not be decoded, error: Error Code: NS_ERROR_DOM_MEDIA_FATAL_ERR (0x806e0005)
+		Details: auto __cdecl mozilla::SupportChecker::AddMediaFormatChecker(const TrackInfo &)::(anonymous class)::operator()(void) const: Decoder may not have the capability to handle the requested video format with YUV444 chroma subsampling.
+	and note that -vcoded mpeg4 also doesn't work, ff says
+		Media resource http://hallucination-research.localhost/ReplicationApp_web/assets/texturelooped2.mp4 could not be decoded, error: Error Code: NS_ERROR_DOM_MEDIA_DEMUXER_ERR (0x806e000c)
+		Details: virtual RefPtr<MP4Demuxer::InitPromise> __cdecl mozilla::MP4Demuxer::Init(void): No MP4 audio () or video () tracks
+
+
+http://hallucination-research.localhost/ReplicationApp_web/?%7B%22samplePhotoIndex%22:4,%22maxDisplacement%22:0,%22playbackSpeed%22:0.1,%22deepDreamLayerIndex%22:0,%22deepDreamOpacity%22:0,%22deepLuminosityBlendOpacity%22:1,%22deepDreamPlaybackSpeed%22:0.5,%22useDeepDreamVideo%22:false,%22kernelMaxDistance%22:112,%22kernelLimitForPerformance%22:21,%22kernelRingCoupling%22:%5B-20,20,-20,0%5D,%22kernelRingDistances%22:%5B0.1,0.3,0.6,0.9%5D,%22kernelRingWidths%22:%5B0.04,0.09,0.12,0.15%5D,%22kernelSizeShrunkBy%22:%22nothing%22,%22frequencyRange%22:%5B7,7%5D,%22frequencyCorrelationPatternSize%22:100,%22frequenciesVaryBy%22:%22random%22%7D
+
+
+
+
+
+trying to fix the GUI architecture
+which input elements are special and how?
+	video speed playback sliders - should set the video values
+	logpolar checkbox, kernelshrinkfactor  - changeFrequenciesAndKernelShrinkageButKeepPhases
+	oscillatorFrequencyMin&Max, frequenciesVaryBy, frequencyCorrelationPatternSize - changeFrequenciesAndKernelShrinkageButKeepPhases and set g_debugDrawFrequencies
+	resolutionhalvings, kernelmaxdistance, kernelshrinkfactor: should update the "effective blabla" text
+	resolutionhalvings, kernelmaxdistance, ringXcoupling, ringXdistance, ringXwidth - set g_debugDrawFilterKernel
+but _all_ of them should work with JSON and URL and drawing a frame
+and _all_ of the sliders and number inputs should be linked

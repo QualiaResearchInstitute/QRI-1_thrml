@@ -1,0 +1,43 @@
+# Core dependencies
+torch>=2.0.0
+numpy>=1.21.0
+thrml  # Thermal/EBM experimentation (Extropic)
+
+# Optional dependencies for training and experiments
+datasets>=2.0.0  # For language modeling datasets
+transformers>=4.20.0  # For tokenizers
+pytest>=7.0.0  # For running tests
+
+# CRV (Circuit-based Reasoning Verification) dependencies
+scipy>=1.11.0  # For clustering and graph analysis (Phase 1+)
+scikit-learn>=1.3.0  # For classifiers (Phase 2)
+networkx>=3.0  # For attribution graphs (Phase 2)
+
+# Note: spare_parts is expected to be in the parent directory
+# This is a companion package from the QRI-1 repository that provides:
+# - Delay dynamics (spare_parts.dynamics.delay)
+# - Telemetry (spare_parts.telemetry)
+# - PID controllers (spare_parts.controllers.pid_autopilot)
+# - CDNS metrics (spare_parts.metrics.cdns_torch)
+# - Kernel registry (spare_parts.kernels.registry)
+#
+# To get spare_parts:
+# 1. Clone https://github.com/QualiaResearchInstitute/QRI-1 to the parent directory
+# 2. Ensure spare_parts/ is available at the same level as resonance-transformer/
+#
+# See README.md for detailed setup instructions
+
+# Optional extras (install as needed)
+# Vision:
+# pillow>=10.0.0
+# torchvision>=0.15.0
+# open-clip-torch>=2.24.0  # optional; HF CLIP works too
+#
+# Audio:
+# librosa>=0.10.1
+# soundfile>=0.12.1
+#
+# IO (webcam/mic), if you want live capture examples:
+# opencv-python>=4.9.0.80
+# sounddevice>=0.4.6
+

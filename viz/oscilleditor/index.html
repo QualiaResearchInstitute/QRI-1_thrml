@@ -1,0 +1,1020 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <title>Replication Tool</title>
+  <!-- Include Bootstrap CSS -->
+  <!-- <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"> -->
+  <link href="libraries/bootstrap@5.3.0/bootstrap.min.css" rel="stylesheet">
+  <style type="text/css">
+    /* Existing CSS styles */
+    body, html {
+      height: 100%;
+      margin: 0;
+      padding: 0; 
+      box-sizing: border-box;
+      font-size: 0.8rem; /* Base font size reduced */
+    }
+
+    .modal {
+      font-size: 1.0rem;
+    }
+
+    #appContainer {
+      display: flex;
+      height: calc(100% - 10px);
+      padding: 5px;
+      overflow: hidden;
+    }
+
+    #sidebar {
+      width: 300px;
+      overflow-y: auto;
+      padding: 5px;
+      border-right: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    /* Main content styles */
+    #mainContent {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      padding-left: 5px;
+      font-size: 1rem;
+    }
+    
+    #mainContent .btn {
+      margin-right: 0.5rem;
+    }
+
+	#jsonSection .btn {
+      margin-top: 0.5rem;
+      display: block;
+    }
+
+    #canvasContainer {
+      display: flex;
+      align-items: flex-start; 
+      justify-content: flex-start; 
+      padding: 0;
+      margin: 0;
+      overflow: hidden;
+    }
+
+    #glCanvas {
+      display: block; 
+      padding: 0;
+      margin: 0;
+      border: none;
+      max-width: 100%;
+      height: auto;
+    }
+
+    /* Super compact styles for controls */
+    #controls .form-label,
+    #controls .form-check-label,
+    #controls .form-check-input,
+    #controls .form-select,
+    #controls .accordion-button,
+    #controls .btn {
+      padding: 0.2rem 0.4rem;
+      font-size: 0.7rem;
+      margin-right: 0.2rem;
+      margin-bottom: 0.1rem;
+    }
+
+    #controls .form-check {
+      margin-bottom: 0.1rem;
+    }
+
+    #controls .form-range {
+      height: 0.7rem;
+      margin: 0.1rem 0;
+    }
+
+    .accordion-button {
+      padding: 0.3rem 0.6rem;
+      font-size: 0.7rem;
+    }
+
+    .accordion-item {
+      margin-bottom: 0.2rem;
+      border: none;
+    }
+
+    .accordion-body {
+      padding: 0.2rem;
+    }
+
+    .number-input {
+      width: 50px;
+      display: inline-block;
+      margin-left: 0.2rem;
+      font-size: 0.7rem;
+      padding: 0.1rem;
+    }
+
+    .table {
+      font-size: 0.6rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .table th, .table td {
+      padding: 0.1rem;
+      vertical-align: middle;
+    }
+
+    #controlsSection {
+      max-height: calc(100vh - 20px);
+      overflow-y: auto;
+    }
+
+    .container-fluid + .container-fluid {
+      margin-top: -7px; /* Remove spacing between consecutive .container-fluid elements */
+    }
+
+    #sidebar::-webkit-scrollbar {
+      width: 6px;
+    }
+    #sidebar::-webkit-scrollbar-thumb {
+      background-color: rgba(0,0,0,0.1);
+      border-radius: 3px;
+    }
+
+    .modal-dialog {
+      max-width: 90%; 
+      width: 900px;
+    }
+
+        
+
+    @media (max-width: 900px) {
+      #appContainer {
+        flex-direction: column;
+        height: auto;
+        padding: 5px;
+      }
+      #sidebar {
+        width: 100%;
+        margin-bottom: 5px;
+        border-right: none;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      }
+      #mainContent {
+        padding-left: 0;
+      }
+    }
+
+    /* New CSS for larger screens */
+    @media (min-width: 1750px) {
+      #sidebar {
+        width: 450px;
+      }
+      .double-column {
+        display: flex;
+        gap: 5px;
+      }
+      .double-column .accordion-item {
+        flex: 1;
+      }
+    }
+  </style>
+
+</head>
+<body>
+  <!-- Toggle button Hidden for now, relevant if fullscreen mode is added -->
+  <button id="toggleSidebar" class="btn btn-secondary position-absolute" style="top: 10px; left: 10px; z-index: 1000;" hidden>
+    Toggle Controls
+  </button>
+  
+  <div id="appContainer">
+    <!-- Sidebar -->
+    <div id="sidebar">
+      <!-- Select Photo Button at the Top -->
+      <div class="container mb-1 p-0">
+        <button id="selectPhotoButton" class="btn btn-primary w-100" data-bs-toggle="modal" data-bs-target="#photoSelectionModal">
+          Select Photo
+        </button>
+      </div>
+      <div id="photoInfo" class="container mb-1 p-0">
+        <!-- Photo info will be displayed here -->
+      </div>
+
+      <!-- Controls Section -->
+      <div id="controls" class="container mb-2 p-0">
+
+        <div class="mb-1 d-flex align-items-center">
+          <label for="paramPreset" class="form-label me-2 mb-0">Preset</label>
+          <select id="paramPreset">
+            <!-- Will be filled dynamically by javascript -->
+          </select>
+          <button id="btnLoadParamPreset" class="btn btn-secondary">Load</button>
+        </div>
+
+        <div class="accordion" id="controlsAccordion">
+
+          <div class="double-column">
+
+            <!-- Drifting Controls -->
+            <div class="accordion-item">
+              <h2 class="accordion-header" id="headingDrifting">
+                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseDrifting" aria-expanded="true" aria-controls="collapseDrifting">
+                  Drifting
+                </button>
+              </h2>
+              <div id="collapseDrifting" class="accordion-collapse collapse show" aria-labelledby="headingDrifting">
+                <div class="accordion-body">
+                  <!-- Drifting Amplitude -->
+                  <div class="mb-1 d-flex align-items-center">
+                    <label for="driftMaxDisplacement" class="form-label me-2 mb-0">Amplitude</label>
+                    <input type="range" class="form-range flex-grow-1 me-1" id="driftMaxDisplacement" min="0" max="0.01" step="0.001" value="0.000">
+                    <input type="number" class="number-input" id="driftMaxDisplacementValue" min="0" max="0.01" step="0.001" value="0.000">
+                  </div>
+                  <!-- Drifting Speed -->
+                  <div class="mb-1 d-flex align-items-center">
+                    <label for="driftPatternPlaybackSpeed" class="form-label me-2 mb-0">Speed</label>
+                    <input type="range" class="form-range flex-grow-1 me-1" id="driftPatternPlaybackSpeed" min="0.1" max="4" step="0.01" value="0.2">
+                    <input type="number" class="number-input" id="driftPatternPlaybackSpeedValue" min="0.1" max="4" step="0.01" value="0.2">
+                  </div>
+                  <!-- Drifting Pattern Size -->
+                  <div class="mb-1 d-flex align-items-center">
+                    <label for="driftPatternSize" class="form-label me-2 mb-0">Pattern Size</label>
+                    <input type="range" class="form-range flex-grow-1 me-1" id="driftPatternSize" min="160" max="6400" step="10" value="1280">
+                    <input type="number" class="number-input" id="driftPatternSizeValue" min="160" max="6400" step="10" value="1280">
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Pattern Recognition Controls -->
+            <div class="accordion-item">
+              <h2 class="accordion-header" id="headingPatternRecognition">
+                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapsePatternRecognition" aria-expanded="true" aria-controls="collapsePatternRecognition">
+                  Pattern Recognition
+                </button>
+              </h2>
+              <div id="collapsePatternRecognition" class="accordion-collapse collapse show" aria-labelledby="headingPatternRecognition">
+                <div class="accordion-body">
+                  <!-- DeepDream Layer -->
+                  <div class="mb-1 d-flex align-items-center">
+                    <label for="deepDreamLayerIndex" class="form-label me-2 mb-0">DeepDream Layer</label>
+                    <select id="deepDreamLayerIndex" class="form-select flex-grow-1">
+                      <!-- Options will be filled in by JavaScript -->
+                    </select>
+                  </div>
+                  <!-- Use Custom Video -->
+                  <div class="form-check mb-1">
+                    <input type="checkbox" class="form-check-input" id="useCustomVideo">
+                    <label class="form-check-label" for="useCustomVideo">Use Video Pattern</label>
+                  </div>
+                  <!-- Video Pattern Speed -->
+                  <div class="mb-1 d-flex align-items-center">
+                    <label for="customVideoPlaybackSpeed" class="form-label me-2 mb-0">Video Speed</label>
+                    <input type="range" class="form-range flex-grow-1 me-1" id="customVideoPlaybackSpeed" min="0.25" max="2" step="0.01" value="0.5">
+                    <input type="number" class="number-input" id="customVideoPlaybackSpeedValue" min="0.25" max="2" step="0.01" value="0.5">
+                  </div>
+                  <!-- DeepDream Opacity -->
+                  <div class="mb-1 d-flex align-items-center">
+                    <label for="deepDreamOpacity" class="form-label me-2 mb-0">Opacity</label>
+                    <input type="range" class="form-range flex-grow-1 me-1" id="deepDreamOpacity" min="0" max="1.0" step="0.01" value="0.0">
+                    <input type="number" class="number-input" id="deepDreamOpacityValue" min="0" max="1.0" step="0.01" value="0.0">
+                  </div>
+                  <!-- DeepLuminosity Blend Opacity -->
+                  <div class="mb-1 d-flex align-items-center">
+                    <label for="deepLuminosityBlendOpacity" class="form-label me-2 mb-0">Saturation</label>
+                    <input type="range" class="form-range flex-grow-1 me-1" id="deepLuminosityBlendOpacity" min="0" max="1.0" step="0.01" value="0.5">
+                    <input type="number" class="number-input" id="deepLuminosityBlendOpacityValue" min="0" max="1.0" step="0.01" value="0.5">
+                  </div>
+                  <!-- Blending Mask Pattern Speed -->
+                  <div class="mb-1 d-flex align-items-center">
+                    <label for="blendPatternPlaybackSpeed" class="form-label me-2 mb-0">Mask Speed</label>
+                    <input type="range" class="form-range flex-grow-1 me-1" id="blendPatternPlaybackSpeed" min="0.1" max="4" step="0.01" value="0.2">
+                    <input type="number" class="number-input" id="blendPatternPlaybackSpeedValue" min="0.1" max="4" step="0.01" value="0.2">
+                  </div>
+                  <!-- Blending Mask Pattern Size -->
+                  <div class="mb-1 d-flex align-items-center">
+                    <label for="blendPatternSize" class="form-label me-2 mb-0">Mask Size</label>
+                    <input type="range" class="form-range flex-grow-1 me-1" id="blendPatternSize" min="160" max="6400" step="10" value="1280">
+                    <input type="number" class="number-input" id="blendPatternSizeValue" min="160" max="6400" step="10" value="1280">
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- Coupled Oscillators Simulation Controls -->
+          <div class="accordion-item">
+            <h2 class="accordion-header" id="headingCoupledOscillators">
+              <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseCoupledOscillators" aria-expanded="true" aria-controls="collapseCoupledOscillators">
+                Coupled Oscillators Simulation
+              </button>
+            </h2>
+            <div id="collapseCoupledOscillators" class="accordion-collapse collapse show" aria-labelledby="headingCoupledOscillators">
+              <div class="accordion-body">
+                <!-- General Controls -->
+                <div class="mb-1 d-flex align-items-center">
+                  <label for="oscillatorOpacity" class="form-label me-2 mb-0">Opacity</label>
+                  <input type="range" class="form-range flex-grow-1 me-1" id="oscillatorOpacity" min="0" max="1.0" step="0.01" value="0.25">
+                  <input type="number" class="number-input" id="oscillatorOpacityValue" min="0" max="1.0" step="0.01" value="0.25">
+                </div>
+                <div class="mb-1 d-flex align-items-center">
+                  <label for="oscillatorColors" class="form-label me-2 mb-0">Colors</label>
+                  <select id="oscillatorColors" class="form-select flex-grow-1">
+                    <option value="rainbow">Rainbow, normal blending</option>
+                    <option value="rainbow2x">Rainbow double, normal blending</option>
+                    <option value="black-white-soft-normal">Black &amp; white smooth, normal blending</option>
+                    <option value="black-white-soft-multi">Black &amp; white smooth, interference blending</option>
+                    <option value="black-white-sharp-multi">Black &amp; white sharp, interference blending</option>
+                    <option value="green-magenta-sharp">Complementary colors sharp, normal blending</option>
+                    <option value="green-magenta-rota">Complementary colors rotate, asymmetric</option>
+                    <option value="green-magenta-sine">Complementary colors sine, asymmetric</option>
+                  </select>
+                </div>
+                <div class="mb-1 d-flex align-items-center">
+                  <label for="numOscillatorFields" class="form-label me-2 mb-0">Num Layers</label>
+                  <input type="range" class="form-range flex-grow-1 me-1" id="numOscillatorFields" min="1" max="2" step="1" value="1">
+                  <input type="number" class="number-input" id="numOscillatorFieldsValue" min="1" max="2" step="1" value="1">
+                </div>
+                <div class="mb-1 d-flex align-items-center">
+                  <label for="crossFieldBlendingBalance" class="form-label me-2 mb-0">Blending Balance</label>
+                  <input type="range" class="form-range flex-grow-1 me-1" id="crossFieldBlendingBalance" min="1" max="2" step="0.01" value="1.5">
+                  <input type="number" class="number-input" id="crossFieldBlendingBalanceValue" min="1" max="2" step="0.01" value="1.5">
+                </div>
+                <small class="form-text text-muted mb-1">(No effect in bottom 2 color modes)</small>
+
+                <!-- Nested Accordion for Layer Controls -->
+                <div class="accordion" id="layerControlsAccordion">
+
+                  <div class="double-column">
+                  <!-- Layer 1 Controls -->
+                  <div class="accordion-item">
+                    <h2 class="accordion-header" id="headingLayer1">
+                      <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseLayer1" aria-expanded="true" aria-controls="collapseLayer1">
+                        Layer 1 Controls
+                      </button>
+                    </h2>
+                    <div id="collapseLayer1" class="accordion-collapse collapse show" aria-labelledby="headingLayer1">
+                      <div class="accordion-body">
+                        <!-- Log-Polar Transform -->
+                        <div class="form-check mb-1">
+                          <input type="checkbox" class="form-check-input" id="layer0logPolar">
+                          <label class="form-check-label" for="layer0logPolar">Log-Polar Transform</label>
+                        </div>
+                        <!-- Resolution Halvings -->
+                        <div class="mb-1 d-flex align-items-center">
+                          <label for="layer0fieldResolutionHalvings" class="form-label me-2 mb-0">Resolution Halvings</label>
+                          <input type="range" class="form-range flex-grow-1 me-1" id="layer0fieldResolutionHalvings" min="0" max="6" step="1" value="1" data-toggle="tooltip" data-placement="top" title="Increase for more speed but lower quality. Each step cuts the resolution in half.">
+                          <input type="number" class="number-input" id="layer0fieldResolutionHalvingsValue" min="0" max="6" step="1" value="1" data-toggle="tooltip" data-placement="top" title="Increase for more speed but lower quality. Each step cuts the resolution in half.">
+                        </div>
+                        <!-- Effective Field Resolution -->
+                        <div class="mb-1">
+                          <label class="form-label me-2">Effective Layer Resolution:</label>
+                          <output id="fieldEffectiveResolution0"></output>
+                        </div>
+                        <!-- Effective Kernel Radius -->
+                        <div class="mb-1">
+                          <label class="form-label me-2">Effective Kernel Radius:</label>
+                          <output id="kernelEffectiveRadius0"></output>
+                        </div>
+                        <!-- Kernel Radius -->
+                        <div class="mb-1 d-flex align-items-center">
+                          <label for="layer0kernelMaxDistance" class="form-label me-2 mb-0">Kernel Radius</label>
+                          <input type="range" class="form-range flex-grow-1 me-1" id="layer0kernelMaxDistance" min="3" max="400" step="1" value="5">
+                          <input type="number" class="number-input" id="layer0kernelMaxDistanceValue" min="3" max="400" step="1" value="5">
+                        </div>
+                        <!-- Kernel Size Shrinkage -->
+                        <div class="mb-1">
+                          <label class="form-label">Kernel Shrinks By:</label>
+                          <div class="form-check form-check-inline">
+                            <input type="radio" class="form-check-input" name="layer0kernelSizeShrunkBy" id="layer0kernelSizeShrunkByDepth" value="depth">
+                            <label class="form-check-label" for="layer0kernelSizeShrunkByDepth">Depth</label>
+                          </div>
+                          <div class="form-check form-check-inline">
+                            <input type="radio" class="form-check-input" name="layer0kernelSizeShrunkBy" id="layer0kernelSizeShrunkByEdge" value="edge">
+                            <label class="form-check-label" for="layer0kernelSizeShrunkByEdge">Edges</label>
+                          </div>
+                          <div class="form-check form-check-inline">
+                            <input type="radio" class="form-check-input" name="layer0kernelSizeShrunkBy" id="layer0kernelSizeShrunkByNothing" value="nothing" checked>
+                            <label class="form-check-label" for="layer0kernelSizeShrunkByNothing">Nothing</label>
+                          </div>
+                        </div>
+                        <!-- Kernel Shrink Factor -->
+                        <div class="mb-1 d-flex align-items-center">
+                          <label for="layer0kernelShrinkFactor" class="form-label me-2 mb-0">Kernel Shrink Factor</label>
+                          <input type="range" class="form-range flex-grow-1 me-1" id="layer0kernelShrinkFactor" min="0.1" max="0.9" step="0.05" value="0.3">
+                          <input type="number" class="number-input" id="layer0kernelShrinkFactorValue" min="0.1" max="0.9" step="0.05" value="0.3">
+                        </div>
+                        <!-- Rings Table -->
+                        <div class="table-responsive mb-1" style="overflow-x: hidden;">
+                          <table class="table table-bordered">
+                            <thead>
+                              <tr>
+                                <th></th>
+                                <th>Coupling</th>
+                                <th>Distance</th>
+                                <th>Width</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <!-- Ring 0 -->
+                              <tr>
+                                <td>Ring 0</td>
+                                <td>
+                                  <input type="range" class="form-range flex-grow-1 me-1" id="layer0ring0coupling" min="-5" max="5" step="0.5" value="0.0">
+                                  <input type="number" class="number-input" id="layer0ring0couplingValue" min="-5" max="5" step="0.5" value="0.0">
+                                </td>
+                                <td>
+                                  <input type="range" class="form-range flex-grow-1 me-1" id="layer0ring0distance" min="0" max="1" step="0.1" value="0.1">
+                                  <input type="number" class="number-input" id="layer0ring0distanceValue" min="0" max="1" step="0.1" value="0.1">
+                                </td>
+                                <td>
+                                  <input type="range" class="form-range flex-grow-1 me-1" id="layer0ring0width" min="0" max="0.2" step="0.01" value="0.05">
+                                  <input type="number" class="number-input" id="layer0ring0widthValue" min="0" max="0.2" step="0.01" value="0.05">
+                                </td>
+                              </tr>
+                              <!-- Ring 1 -->
+                              <tr>
+                                <td>Ring 1</td>
+                                <td>
+                                  <input type="range" class="form-range flex-grow-1 me-1" id="layer0ring1coupling" min="-5" max="5" step="0.5" value="0.0">
+                                  <input type="number" class="number-input" id="layer0ring1couplingValue" min="-5" max="5" step="0.5" value="0.0">
+                                </td>
+                                <td>
+                                  <input type="range" class="form-range flex-grow-1 me-1" id="layer0ring1distance" min="0" max="1" step="0.1" value="0.3">
+                                  <input type="number" class="number-input" id="layer0ring1distanceValue" min="0" max="1" step="0.1" value="0.3">
+                                </td>
+                                <td>
+                                  <input type="range" class="form-range flex-grow-1 me-1" id="layer0ring1width" min="0" max="0.2" step="0.01" value="0.08">
+                                  <input type="number" class="number-input" id="layer0ring1widthValue" min="0" max="0.2" step="0.01" value="0.08">
+                                </td>
+                              </tr>
+                              <!-- Ring 2 -->
+                              <tr>
+                                <td>Ring 2</td>
+                                <td>
+                                  <input type="range" class="form-range flex-grow-1 me-1" id="layer0ring2coupling" min="-5" max="5" step="0.5" value="0.0">
+                                  <input type="number" class="number-input" id="layer0ring2couplingValue" min="-5" max="5" step="0.5" value="0.0">
+                                </td>
+                                <td>
+                                  <input type="range" class="form-range flex-grow-1 me-1" id="layer0ring2distance" min="0" max="1" step="0.1" value="0.6">
+                                  <input type="number" class="number-input" id="layer0ring2distanceValue" min="0" max="1" step="0.1" value="0.6">
+                                </td>
+                                <td>
+                                  <input type="range" class="form-range flex-grow-1 me-1" id="layer0ring2width" min="0" max="0.2" step="0.01" value="0.12">
+                                  <input type="number" class="number-input" id="layer0ring2widthValue" min="0" max="0.2" step="0.01" value="0.12">
+                                </td>
+                              </tr>
+                              <!-- Ring 3 -->
+                              <tr>
+                                <td>Ring 3</td>
+                                <td>
+                                  <input type="range" class="form-range flex-grow-1 me-1" id="layer0ring3coupling" min="-5" max="5" step="0.5" value="0.0">
+                                  <input type="number" class="number-input" id="layer0ring3couplingValue" min="-5" max="5" step="0.5" value="0.0">
+                                </td>
+                                <td>
+                                  <input type="range" class="form-range flex-grow-1 me-1" id="layer0ring3distance" min="0" max="1" step="0.1" value="0.9">
+                                  <input type="number" class="number-input" id="layer0ring3distanceValue" min="0" max="1" step="0.1" value="0.9">
+                                </td>
+                                <td>
+                                  <input type="range" class="form-range flex-grow-1 me-1" id="layer0ring3width" min="0" max="0.2" step="0.01" value="0.15">
+                                  <input type="number" class="number-input" id="layer0ring3widthValue" min="0" max="0.2" step="0.01" value="0.15">
+                                </td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                        <!-- Coupling to Layer 2 -->
+                        <div class="mb-1 d-flex align-items-center">
+                          <label for="layer0influenceFromOtherLayer" class="form-label me-2 mb-0">Coupling to Layer 2</label>
+                          <input type="range" class="form-range flex-grow-1 me-1" id="layer0influenceFromOtherLayer" min="-5" max="5" step="0.5" value="0.0">
+                          <input type="number" class="number-input" id="layer0influenceFromOtherLayerValue" min="-5" max="5" step="0.5" value="0.0">
+                        </div>
+                        <!-- Nested Accordion for Oscillator Frequencies -->
+                        <div class="accordion" id="layer1FrequenciesAccordion">
+                          <div class="accordion-item">
+                            <h2 class="accordion-header" id="headingLayer1Frequencies">
+                              <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseLayer1Frequencies" aria-expanded="true" aria-controls="collapseLayer1Frequencies">
+                                Layer 1 Oscillator Frequencies
+                              </button>
+                            </h2>
+                            <div id="collapseLayer1Frequencies" class="accordion-collapse collapse show" aria-labelledby="headingLayer1Frequencies">
+                              <div class="accordion-body">
+                                <!-- Frequency From -->
+                                <div class="mb-1 d-flex align-items-center">
+                                  <label for="layer0oscillatorFrequencyMin" class="form-label me-2 mb-0">Min</label>
+                                  <input type="range" class="form-range flex-grow-1 me-1" id="layer0oscillatorFrequencyMin" min="0.0" max="30" step="0.1" value="3">
+                                  <input type="number" class="number-input" id="layer0oscillatorFrequencyMinValue" min="0.0" max="30" step="0.1" value="3"> Hz
+                                </div>
+                                <!-- Frequency To -->
+                                <div class="mb-1 d-flex align-items-center">
+                                  <label for="layer0oscillatorFrequencyMax" class="form-label me-2 mb-0">Max</label>
+                                  <input type="range" class="form-range flex-grow-1 me-1" id="layer0oscillatorFrequencyMax" min="0.0" max="30" step="0.1" value="7">
+                                  <input type="number" class="number-input" id="layer0oscillatorFrequencyMaxValue" min="0.0" max="30" step="0.1" value="7"> Hz
+                                </div>
+                                <!-- Frequencies Vary By -->
+                                <div class="mb-1">
+                                  <label class="form-label">Frequencies Vary By:</label>
+                                  <div class="form-check">
+                                    <input type="radio" class="form-check-input" name="layer0frequenciesVaryBy" id="layer0freqByDepth" value="depth">
+                                    <label class="form-check-label" for="layer0freqByDepth">Depth (Lower Frequency Far Away)</label>
+                                  </div>
+                                  <div class="form-check">
+                                    <input type="radio" class="form-check-input" name="layer0frequenciesVaryBy" id="layer0freqByEdge" value="edge">
+                                    <label class="form-check-label" for="layer0freqByEdge">Edges (Higher Frequency at Edges)</label>
+                                  </div>
+                                  <div class="form-check">
+                                    <input type="radio" class="form-check-input" name="layer0frequenciesVaryBy" id="layer0freqByBrightness" value="brightness">
+                                    <label class="form-check-label" for="layer0freqByBrightness">Brightness</label>
+                                  </div>
+                                  <div class="form-check">
+                                    <input type="radio" class="form-check-input" name="layer0frequenciesVaryBy" id="layer0freqByPattern" value="pattern">
+                                    <label class="form-check-label" for="layer0freqByPattern">Spatial Sine &amp; Cosine Pattern</label>
+                                    <div class="mb-1 d-flex align-items-center">
+                                      <label for="layer0frequencyCorrelationPatternSize" class="form-label me-2 mb-0">Size</label>
+                                      <input type="range" class="form-range flex-grow-1 me-1" id="layer0frequencyCorrelationPatternSize" min="10" max="857" step="1" value="100" disabled>
+                                      <input type="number" class="number-input" id="layer0frequencyCorrelationPatternSizeValue" min="10" max="857" step="1" value="100" disabled>
+                                    </div>
+                                  </div>
+                                  <div class="form-check">
+                                    <input type="radio" class="form-check-input" name="layer0frequenciesVaryBy" id="layer0freqByRandom" value="random">
+                                    <label class="form-check-label" for="layer0freqByRandom">Random noise</label>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        <!-- End of Oscillator Frequencies Accordion -->
+				        <button id="layer0btnRandomizePhases" class="btn btn-secondary">Randomize phases</button>
+				        <button id="layer0btnUnifyPhases" class="btn btn-secondary">Unify</button>
+				        <button id="layer0btnPlaneWavePhases" class="btn btn-secondary">Plane waves H</button>
+				        <button id="layer0btnPlaneWaveVPhases" class="btn btn-secondary">Plane waves V</button>
+				        <button id="layer0btnPlaneWave45Phases" class="btn btn-secondary">Plane waves 45&deg;</button>
+                      </div>
+                    </div>
+                  </div>
+                    
+                    
+                    <!-- Layer 2 Controls -->
+                    <div class="accordion-item">
+                      <h2 class="accordion-header" id="headingLayer2">
+                        <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseLayer2" aria-expanded="true" aria-controls="collapseLayer2">
+                          Layer 2 Controls
+                        </button>
+                      </h2>
+                      <div id="collapseLayer2" class="accordion-collapse collapse show" aria-labelledby="headingLayer2">
+                        <div class="accordion-body">
+                          <!-- Log-Polar Transform -->
+                          <div class="form-check mb-1">
+                            <input type="checkbox" class="form-check-input" id="layer1logPolar">
+                            <label class="form-check-label" for="layer1logPolar">Log-Polar Transform</label>
+                          </div>
+                          <!-- Resolution Halvings -->
+                          <div class="mb-1 d-flex align-items-center">
+                            <label for="layer1fieldResolutionHalvings" class="form-label me-2 mb-0">Resolution Halvings</label>
+                            <input type="range" class="form-range flex-grow-1 me-1" id="layer1fieldResolutionHalvings" min="0" max="6" step="1" value="1" data-toggle="tooltip" data-placement="top" title="Increase for more speed but lower quality. Each step cuts the resolution in half.">
+                            <input type="number" class="number-input" id="layer1fieldResolutionHalvingsValue" min="0" max="6" step="1" value="1" data-toggle="tooltip" data-placement="top" title="Increase for more speed but lower quality. Each step cuts the resolution in half.">
+                          </div>
+                          <!-- Effective Field Resolution -->
+                          <div class="mb-1">
+                            <label class="form-label me-2">Effective Layer Resolution:</label>
+                            <output id="fieldEffectiveResolution1"></output>
+                          </div>
+                          <!-- Effective Kernel Radius -->
+                          <div class="mb-1">
+                            <label class="form-label me-2">Effective Kernel Radius:</label>
+                            <output id="kernelEffectiveRadius1"></output>
+                          </div>
+                          <!-- Kernel Radius -->
+                          <div class="mb-1 d-flex align-items-center">
+                            <label for="layer1kernelMaxDistance" class="form-label me-2 mb-0">Kernel Radius</label>
+                            <input type="range" class="form-range flex-grow-1 me-1" id="layer1kernelMaxDistance" min="3" max="400" step="1" value="5">
+                            <input type="number" class="number-input" id="layer1kernelMaxDistanceValue" min="3" max="400" step="1" value="5">
+                          </div>
+                          <!-- Kernel Size Shrinkage -->
+                          <div class="mb-1">
+                            <label class="form-label">Kernel Shrinks By:</label>
+                            <div class="form-check form-check-inline">
+                              <input type="radio" class="form-check-input" name="layer1kernelSizeShrunkBy" id="layer1kernelSizeShrunkByDepth" value="depth">
+                              <label class="form-check-label" for="layer1kernelSizeShrunkByDepth">Depth</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                              <input type="radio" class="form-check-input" name="layer1kernelSizeShrunkBy" id="layer1kernelSizeShrunkByEdge" value="edge">
+                              <label class="form-check-label" for="layer1kernelSizeShrunkByEdge">Edges</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                              <input type="radio" class="form-check-input" name="layer1kernelSizeShrunkBy" id="layer1kernelSizeShrunkByNothing" value="nothing" checked>
+                              <label class="form-check-label" for="layer1kernelSizeShrunkByNothing">Nothing</label>
+                            </div>
+                          </div>
+                          <!-- Kernel Shrink Factor -->
+                          <div class="mb-1 d-flex align-items-center">
+                            <label for="layer1kernelShrinkFactor" class="form-label me-2 mb-0">Kernel Shrink Factor</label>
+                            <input type="range" class="form-range flex-grow-1 me-1" id="layer1kernelShrinkFactor" min="0.1" max="0.9" step="0.05" value="0.3">
+                            <input type="number" class="number-input" id="layer1kernelShrinkFactorValue" min="0.1" max="0.9" step="0.05" value="0.3">
+                          </div>
+                          <!-- Rings Table -->
+                          <div class="table-responsive mb-1" style="overflow-x: hidden;">
+                            <table class="table table-bordered">
+                              <thead>
+                                <tr>
+                                  <th></th>
+                                  <th>Coupling</th>
+                                  <th>Distance</th>
+                                  <th>Width</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                <!-- Ring 0 -->
+                                <tr>
+                                  <td>Ring 0</td>
+                                  <td>
+                                    <input type="range" class="form-range flex-grow-1 me-1" id="layer1ring0coupling" min="-5" max="5" step="0.5" value="0.0">
+                                    <input type="number" class="number-input" id="layer1ring0couplingValue" min="-5" max="5" step="0.5" value="0.0">
+                                  </td>
+                                  <td>
+                                    <input type="range" class="form-range flex-grow-1 me-1" id="layer1ring0distance" min="0" max="1" step="0.1" value="0.1">
+                                    <input type="number" class="number-input" id="layer1ring0distanceValue" min="0" max="1" step="0.1" value="0.1">
+                                  </td>
+                                  <td>
+                                    <input type="range" class="form-range flex-grow-1 me-1" id="layer1ring0width" min="0" max="0.2" step="0.01" value="0.05">
+                                    <input type="number" class="number-input" id="layer1ring0widthValue" min="0" max="0.2" step="0.01" value="0.05">
+                                  </td>
+                                </tr>
+                                <!-- Ring 1 -->
+                                <tr>
+                                  <td>Ring 1</td>
+                                  <td>
+                                    <input type="range" class="form-range flex-grow-1 me-1" id="layer1ring1coupling" min="-5" max="5" step="0.5" value="0.0">
+                                    <input type="number" class="number-input" id="layer1ring1couplingValue" min="-5" max="5" step="0.5" value="0.0">
+                                  </td>
+                                  <td>
+                                    <input type="range" class="form-range flex-grow-1 me-1" id="layer1ring1distance" min="0" max="1" step="0.1" value="0.3">
+                                    <input type="number" class="number-input" id="layer1ring1distanceValue" min="0" max="1" step="0.1" value="0.3">
+                                  </td>
+                                  <td>
+                                    <input type="range" class="form-range flex-grow-1 me-1" id="layer1ring1width" min="0" max="0.2" step="0.01" value="0.08">
+                                    <input type="number" class="number-input" id="layer1ring1widthValue" min="0" max="0.2" step="0.01" value="0.08">
+                                  </td>
+                                </tr>
+                                <!-- Ring 2 -->
+                                <tr>
+                                  <td>Ring 2</td>
+                                  <td>
+                                    <input type="range" class="form-range flex-grow-1 me-1" id="layer1ring2coupling" min="-5" max="5" step="0.5" value="0.0">
+                                    <input type="number" class="number-input" id="layer1ring2couplingValue" min="-5" max="5" step="0.5" value="0.0">
+                                  </td>
+                                  <td>
+                                    <input type="range" class="form-range flex-grow-1 me-1" id="layer1ring2distance" min="0" max="1" step="0.1" value="0.6">
+                                    <input type="number" class="number-input" id="layer1ring2distanceValue" min="0" max="1" step="0.1" value="0.6">
+                                  </td>
+                                  <td>
+                                    <input type="range" class="form-range flex-grow-1 me-1" id="layer1ring2width" min="0" max="0.2" step="0.01" value="0.12">
+                                    <input type="number" class="number-input" id="layer1ring2widthValue" min="0" max="0.2" step="0.01" value="0.12">
+                                  </td>
+                                </tr>
+                                <!-- Ring 3 -->
+                                <tr>
+                                  <td>Ring 3</td>
+                                  <td>
+                                    <input type="range" class="form-range flex-grow-1 me-1" id="layer1ring3coupling" min="-5" max="5" step="0.5" value="0.0">
+                                    <input type="number" class="number-input" id="layer1ring3couplingValue" min="-5" max="5" step="0.5" value="0.0">
+                                  </td>
+                                  <td>
+                                    <input type="range" class="form-range flex-grow-1 me-1" id="layer1ring3distance" min="0" max="1" step="0.1" value="0.9">
+                                    <input type="number" class="number-input" id="layer1ring3distanceValue" min="0" max="1" step="0.1" value="0.9">
+                                  </td>
+                                  <td>
+                                    <input type="range" class="form-range flex-grow-1 me-1" id="layer1ring3width" min="0" max="0.2" step="0.01" value="0.15">
+                                    <input type="number" class="number-input" id="layer1ring3widthValue" min="0" max="0.2" step="0.01" value="0.15">
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </div>
+                          <!-- Coupling to Layer 1 -->
+                          <div class="mb-1 d-flex align-items-center">
+                            <label for="layer1influenceFromOtherLayer" class="form-label me-2 mb-0">Coupling to Layer 2</label>
+                            <input type="range" class="form-range flex-grow-1 me-1" id="layer1influenceFromOtherLayer" min="-5" max="5" step="0.5" value="0.0">
+                            <input type="number" class="number-input" id="layer1influenceFromOtherLayerValue" min="-5" max="5" step="0.5" value="0.0">
+                          </div>
+                          <!-- Nested Accordion for Oscillator Frequencies -->
+                          <div class="accordion" id="layer2FrequenciesAccordion">
+                            <div class="accordion-item">
+                              <h2 class="accordion-header" id="headingLayer2Frequencies">
+                                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseLayer2Frequencies" aria-expanded="true" aria-controls="collapseLayer2Frequencies">
+                                  Layer 2 Oscillator Frequencies
+                                </button>
+                              </h2>
+                              <div id="collapseLayer2Frequencies" class="accordion-collapse collapse show" aria-labelledby="headingLayer2Frequencies">
+                                <div class="accordion-body">
+                                  <!-- Frequency From -->
+                                  <div class="mb-1 d-flex align-items-center">
+                                    <label for="layer1oscillatorFrequencyMin" class="form-label me-2 mb-0">Min</label>
+                                    <input type="range" class="form-range flex-grow-1 me-1" id="layer1oscillatorFrequencyMin" min="0.0" max="30" step="0.1" value="3">
+                                    <input type="number" class="number-input" id="layer1oscillatorFrequencyMinValue" min="0.0" max="30" step="0.1" value="3"> Hz
+                                  </div>
+                                  <!-- Frequency To -->
+                                  <div class="mb-1 d-flex align-items-center">
+                                    <label for="layer1oscillatorFrequencyMax" class="form-label me-2 mb-0">Max</label>
+                                    <input type="range" class="form-range flex-grow-1 me-1" id="layer1oscillatorFrequencyMax" min="0.0" max="30" step="0.1" value="7">
+                                    <input type="number" class="number-input" id="layer1oscillatorFrequencyMaxValue" min="0.0" max="30" step="0.1" value="7"> Hz
+                                  </div>
+                                  <!-- Frequencies Vary By -->
+                                  <div class="mb-1">
+                                    <label class="form-label">Frequencies Vary By:</label>
+                                    <div class="form-check">
+                                      <input type="radio" class="form-check-input" name="layer1frequenciesVaryBy" id="layer1freqByDepth" value="depth">
+                                      <label class="form-check-label" for="layer1freqByDepth">Depth Map (Lower Frequency Far Away)</label>
+                                    </div>
+                                    <div class="form-check">
+                                      <input type="radio" class="form-check-input" name="layer1frequenciesVaryBy" id="layer1freqByEdge" value="edge">
+                                      <label class="form-check-label" for="layer1freqByEdge">Edge Map (Higher Frequency at Edges)</label>
+                                    </div>
+                                    <div class="form-check">
+                                      <input type="radio" class="form-check-input" name="layer1frequenciesVaryBy" id="layer1freqByBrightness" value="brightness">
+                                      <label class="form-check-label" for="layer1freqByBrightness">Image Brightness</label>
+                                    </div>
+                                    <div class="form-check">
+                                      <input type="radio" class="form-check-input" name="layer1frequenciesVaryBy" id="layer1freqByPattern" value="pattern">
+                                      <label class="form-check-label" for="layer1freqByPattern">Spatial Sine &amp; Cosine Pattern</label>
+                                      <div class="mb-1 d-flex align-items-center">
+                                        <label for="layer1frequencyCorrelationPatternSize" class="form-label me-2 mb-0">Size</label>
+                                        <input type="range" class="form-range flex-grow-1 me-1" id="layer1frequencyCorrelationPatternSize" min="10" max="857" step="1" value="100" disabled>
+                                        <input type="number" class="number-input" id="layer1frequencyCorrelationPatternSizeValue" min="10" max="857" step="1" value="100" disabled>
+                                      </div>
+                                    </div>
+                                    <div class="form-check">
+                                      <input type="radio" class="form-check-input" name="layer1frequenciesVaryBy" id="layer1freqByRandom" value="random">
+                                      <label class="form-check-label" for="layer1freqByRandom">Random noise</label>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                          <!-- End of Oscillator Frequencies Accordion -->
+				          <button id="layer1btnRandomizePhases" class="btn btn-secondary">Randomize phases</button>
+				          <button id="layer1btnUnifyPhases" class="btn btn-secondary">Unify</button>
+				          <button id="layer1btnPlaneWavePhases" class="btn btn-secondary">Plane waves H</button>
+				          <button id="layer1btnPlaneWaveVPhases" class="btn btn-secondary">Plane waves V</button>
+				          <button id="layer1btnPlaneWave45Phases" class="btn btn-secondary">Plane waves 45&deg;</button>
+                        </div>
+                      </div>
+                      <!-- End of Layer 2 Controls Accordion -->
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+
+            </div>
+          </div>
+          <!-- End of Coupled Oscillators Simulation Controls -->
+
+        </div> <!-- End of controlsAccordion -->
+      </div> <!-- End of controls container -->
+
+      <hr />
+      <!-- JSON Section -->
+      <div id="jsonSection" class="container mb-2 p-0">
+        <button class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#submitParamsModal">Submit parameters</button>
+        <button class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#exportParamsModal">Share / export parameters</button>
+        <button class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#importParamsModal">Import parameters</button>
+      </div>
+
+    </div> <!-- End of sidebar -->
+
+    <!-- Main Content -->
+    <div id="mainContent">
+      <!-- Canvas Section -->
+      <div id="canvasContainer">
+        <canvas id="glCanvas" width="1280" height="720">
+          Sorry, your web browser doesn't support a feature we need (the &lt;canvas&gt; element). Upgrade to a more modern browser!
+        </canvas>
+      </div>
+      <!-- Control Buttons -->
+      <div class="container-fluid py-2 d-flex align-items-center">
+        <button id="btnPlay" class="btn btn-primary">Play</button>
+        <button id="btnPause" class="btn btn-secondary">Pause</button>
+        <button id="btnSingleStep" class="btn btn-secondary">Single Step</button>
+        <span class="ms-3">Speed: <output id="frameTimeMs"></output></span>
+      </div>
+      <div class="container-fluid py-2 d-flex align-items-center">
+        <button id="btnRandomizeAllPhases" class="btn btn-secondary">Randomize All Phases</button>
+        <button id="btnUnifyAllPhases" class="btn btn-secondary">Unify All Phases</button>
+        <button id="btnTriggerCorticalDepression" class="btn btn-danger ms-2">Trigger CSD</button>
+      </div>
+    </div> <!-- End of mainContent -->
+  </div> <!-- End of appContainer -->
+
+  <!-- Modal dialogs -->
+  <div class="modal fade" id="photoSelectionModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Choose a Photo</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <!-- Thumbnails of all photos -->
+          <div id="sourcePhotos" class="container">
+            <!-- Thumbnails will be added here dynamically -->
+          </div>
+          <div class="container mt-3 border-top pt-3">
+            <h6 class="mb-2">Upload your own</h6>
+            <div class="mb-2">
+              <label for="customPhotoInput" class="form-label">Base image</label>
+              <input type="file" class="form-control form-control-sm" id="customPhotoInput" accept="image/*">
+            </div>
+            <div class="mb-2">
+              <label for="customDepthInput" class="form-label">Optional depth map</label>
+              <input type="file" class="form-control form-control-sm" id="customDepthInput" accept="image/*">
+            </div>
+            <div class="mb-2">
+              <label for="customEdgeStrategy" class="form-label mb-1">Edge detector</label>
+              <select id="customEdgeStrategy" class="form-select form-select-sm">
+                <option value="sobel">Sobel gradients</option>
+                <option value="jumpFlood">Jump flood distance</option>
+                <option value="kuramoto">Kuramoto phase coherence</option>
+              </select>
+            </div>
+            <div class="mb-2">
+              <label for="customDepthStrategy" class="form-label mb-1">Depth heuristic</label>
+              <select id="customDepthStrategy" class="form-select form-select-sm">
+                <option value="luma">Brightness-based depth</option>
+                <option value="edgeDistance">Edge distance field</option>
+                <option value="flat">Flat plane</option>
+              </select>
+            </div>
+            <div class="mb-2">
+              <label for="customEdgeThreshold" class="form-label mb-1">Edge threshold</label>
+              <input type="range" id="customEdgeThreshold" class="form-range" min="0.05" max="0.8" step="0.05" value="0.35">
+            </div>
+            <div class="form-text small mb-2" id="customUploadStatus">Select an image to enable uploads.</div>
+            <div class="d-flex gap-2 mb-3">
+              <button type="button" class="btn btn-secondary btn-sm" id="btnRegenerateCustomMaps" disabled>Rebuild maps</button>
+              <button type="button" class="btn btn-primary btn-sm" id="btnUseCustomUpload" disabled>Use upload</button>
+            </div>
+            <div class="d-flex flex-wrap gap-2" id="customPreviewWrapper">
+              <div class="flex-grow-1" style="min-width: 120px;">
+                <div class="small text-muted mb-1">Base</div>
+                <canvas id="customPreviewBase" width="180" height="120" class="border border-secondary rounded w-100"></canvas>
+              </div>
+              <div class="flex-grow-1" style="min-width: 120px;">
+                <div class="small text-muted mb-1">Edges</div>
+                <canvas id="customPreviewEdge" width="180" height="120" class="border border-secondary rounded w-100"></canvas>
+              </div>
+              <div class="flex-grow-1" style="min-width: 120px;">
+                <div class="small text-muted mb-1">Depth</div>
+                <canvas id="customPreviewDepth" width="180" height="120" class="border border-secondary rounded w-100"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="submitParamsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <form class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Submit Parameters</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label>Sharing link with parameters</label><br>
+            <input class="form-control" type="text" name="sharingUrl" readonly>
+          </div>
+
+          <div class="mb-3">
+            <label>Drug (N/A if sober)</label><br>
+            <input class="form-control" type="text" name="drug" placeholder="LSD">
+          </div>
+
+          <div class="mb-3">
+            <label>Dose, including units</label><br>
+            <input class="form-control" type="text" name="dose" placeholder="120 micrograms">
+          </div>
+
+          <div class="mb-3">
+            <label>Method of consumption for the drug</label><br>
+            <input class="form-control" type="text" name="method" placeholder="Ingestion, Smoking, etc">
+          </div>
+
+          <div class="mb-3">
+            <span>Select one:</span><br>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="inAlteredState" id="inAlteredStateYes" value="yes">
+              <label for="inAlteredStateYes">I am currently in the altered state</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="inAlteredState" id="inAlteredStatePost" value="post">
+              <label for="inAlteredStatePost">I am not currently in the altered state, but I viewed the tool while in the altered state</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="inAlteredState" id="inAlteredStateNo" value="no">
+              <label for="inAlteredStateNo">I am not currently in the altered state, nor did I view the tool while I was in the altered state</label>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label>How long after taking the drug are you submitting this replication? Be as precise as possible.</label><br>
+            <input class="form-control" type="text" name="timeAfterDrug" placeholder="3 hours and 22 minutes">
+          </div>
+
+          <div class="mb-3">
+            <span>How closely do the computer-generated visuals with these parameters match your actual visual experience?</span><br>
+            <div class="d-flex align-items-center justify-content-between">
+              <span>Not at all</span>
+              <div class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" name="visualMatchRating" id="visualMatch1" value="1">
+                <label class="form-check-label" for="visualMatch1">1</label>
+              </div>
+              <div class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" name="visualMatchRating" id="visualMatch2" value="2">
+                <label class="form-check-label" for="visualMatch2">2</label>
+              </div>
+              <div class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" name="visualMatchRating" id="visualMatch3" value="3">
+                <label class="form-check-label" for="visualMatch3">3</label>
+              </div>
+              <div class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" name="visualMatchRating" id="visualMatch4" value="4">
+                <label class="form-check-label" for="visualMatch4">4</label>
+              </div>
+              <div class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" name="visualMatchRating" id="visualMatch5" value="5">
+                <label class="form-check-label" for="visualMatch5">5</label>
+              </div>
+              <span>Perfectly</span>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label>Other notes and comments</label><br>
+            <input class="form-control" type="text" name="notes">
+          </div>
+
+          <p>We value your privacy. All data will be stored anonymously. We will not track your location or IP address, and we will never attempt to identify you. However, submitting information that clearly indicates illegal activity can carry personal risk.</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary">Submit</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal fade" id="exportParamsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Share parameters</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p>To share your replication with others, send them either this link...</p>
+          <textarea name="sharingUrl" class="form-control" type="text" rows="10" readonly></textarea>
+          <p>... or these JSON parameters which they will have to "import"</p>
+          <textarea id="jsonExportTextarea" class="form-control mt-1" placeholder="JSON will appear here for export" rows="10" readonly></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="importParamsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Import parameters</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="container">
+            <textarea id="jsonImportTextarea" class="form-control mt-1" placeholder="Paste JSON here" rows="10"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary" id="btnImportParametersFromJson">Import</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="./sketch_js.js"></script>
+  <script src="./ui_controls.js"></script>
+  <script src="./param-export-import.js"></script>
+  <script src="./google-sheets-integration.js"></script>
+  <!-- Bootstrap JS Bundle -->
+  <!-- <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script> -->
+  <script src="libraries/bootstrap@5.3.0/bootstrap.bundle.min.js"></script>
+</body>
+</html>

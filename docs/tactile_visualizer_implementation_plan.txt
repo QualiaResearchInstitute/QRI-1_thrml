@@ -1,0 +1,426 @@
+Tactile Visualizer Implementation Plan
+=====================================
+
+Audience
+--------
+Senior engineers building the simulator + tools stack. Assumes familiarity with Python, numerical methods (Kuramoto / Laplacian), and TypeScript/WebGL for visualization.
+
+Goals
+-----
+1. Deliver MVP multi-layer oscillator body with scope control and baseline visualization.
+2. Layer in advanced tooling (spectral editor, CDNS analysis, magnetic overlay, mixed-dimensional bridges) without touching the core integrator.
+3. Provide a build order with concrete module boundaries and data contracts.
+4. Introduce a control/learning layer (controllers, pattern library, human feedback, cross-modal bridges, experiment sweeps, safety) on top of the core.
+
+High-Level System Diagram
+-------------------------
+simulation/
+  engine.py          # tick loop, integration, event hooks
+  state.py           # dataclasses for Graph, NodeState, ScopeField
+  kernels.py         # intra-graph coupling kernels + registry
+  bridges.py         # Bridge base class + implementations A/B/C/D
+  scope.py           # brush tools → scope tensors
+analytics/
+  cdns.py            # rolling buffers, DCT, metrics, API for UI
+  spectral.py        # Laplacian solver, caching, projections
+  magnetic.py        # tangent currents → field samples
+control/
+  controller.py      # learned or scripted field controller (policies over scope/kernels/bridges)
+  pattern_library.py # record/replay of field trajectories and presets
+  feedback.py        # human feedback collection + reward model
+  safety.py          # guardrails and constraints on controller actions
+viz/
+  avatar.tsx         # front-end avatar renderer, color/pulse mapping
+  overlays.tsx       # scope heatmap, magnetic streamlines, CDNS UI
+experiments/
+  sweeper.py         # meta-experiment runner for parameter sweeps
+  thermal_reservoir/ # thrml-based thermal reservoir experiments
+docs/
+  tactile_visualizer_implementation_plan.txt  # this file; keep updated when APIs change
+
+1. Core Simulation Platform
+---------------------------
+
+1.1 Graph + Node State
+~~~~~~~~~~~~~~~~~~~~~~
+- `Graph` dataclass:
+  - `name`: string (skin / volume / cardio)
+  - `nodes`: list of `Node`
+  - `edges`: list of `(i, j, weight)`
+  - `geom`: numpy array shape (N, 3) for 3D coordinates (store unused dims as zeros if mesh is 1.5D)
+  - `dim`: oscillator dimensionality D for all nodes in graph (allow per-node override via optional array)
+  - `kernel_id`: key into kernel registry
+- `NodeState`:
+  - `phase`: np.ndarray shape (D,)
+  - `amplitude`: optional np.ndarray (D,) (default ones)
+  - `omega`: np.ndarray (D,)
+  - `scope`: struct with `coup`, `damp`, `amp` scalars
+  - `metadata`: dict for UI labels or anatomical tags
+- Storage:
+  - Keep contiguous arrays per graph for SIMD-friendly ops:
+    - `phase[N, D]`, `omega[N, D]`, `scope_coup[N]`, etc.
+  - Maintain adjacency in CSR for quick neighbor access.
+
+1.2 Intra-graph Kernels
+~~~~~~~~~~~~~~~~~~~~~~~
+- Kernel registry API:
+  ```python
+  class Kernel(Protocol):
+      def prepare(self, graph: Graph) -> KernelContext: ...
+      def apply(self, ctx: KernelContext, phase: np.ndarray) -> np.ndarray:
+          """Return coupling term dϕ/dt of shape (N, D)."""
+  ```
+- MVP kernels:
+  - `CardioPathKernel`: nearest-neighbor along vessel tree, weight `exp(-path/λ)`.
+  - `SkinMeshKernel`: Laplacian on mesh (use cotangent weights or simple adjacency), optional meridian edges toggled via config.
+  - `VolumeLatticeKernel`: 6-neighbor or 26-neighbor coupling in voxel grid.
+- Implementation hints:
+  - Precompute normalized adjacency weights (degree inverse) at `prepare`.
+  - Use vectorized `sin(phase_j - phase_i)`; store neighbor indices as padded arrays or use scatter-add via `numba`/`torch`.
+
+1.3 Simulation Loop
+~~~~~~~~~~~~~~~~~~~
+- `SimulationEngine.tick(dt)`:
+  1. For each graph:
+     - Compute intra-graph coupling term `C_graph`.
+  2. For each bridge (Section 2):
+     - Compute cross-graph contributions `B_target`.
+  3. Combine per node:
+     ```python
+     dphi = omega + scope_coup * (C_graph + Σ bridges) - scope_damp * (phase - baseline)
+     phase += integrator.step(dphi, dt)
+     amplitude *= scope_amp  # optional
+     ```
+  4. Emit diagnostics (order parameters, energy) and feed analytics buffers.
+- Integrator:
+  - Start with explicit Euler (dt ≈ 5–10 ms). Provide hook for RK4 if stiffness arises.
+- Threading:
+  - Use Python with NumPy/Numba or PyTorch for GPU acceleration; keep interface framework agnostic.
+
+1.4 Scope Field
+~~~~~~~~~~~~~~~
+- `ScopeField` stored per graph; user painting writes into `scope_coup`, `scope_damp`, `scope_amp`.
+- Provide presets as JSON:
+  ```json
+  { "name": "Full Release", "coup": 1.5, "damp": 0.1, "amp": 1.2 }
+  ```
+- UI pipeline:
+  1. User paints mask texture on avatar.
+  2. Texture sampled to nearest nodes (barycentric for triangles).
+  3. Values eased over 200–500 ms to prevent pops.
+- Logging:
+  - Track min/max scope to debug inactivity (per user rule to add logging).
+
+2. Bridge Architecture (Mixed-D Coupling)
+----------------------------------------
+
+2.1 Bridge Contract
+~~~~~~~~~~~~~~~~~~~
+```python
+class Bridge(Protocol):
+    source: Graph
+    target: Graph
+    strength: float
+    geom_map: GeomMap
+    osc_map: OscMap
+
+    def prepare(self): ...
+    def apply(self, phases_by_graph) -> np.ndarray:
+        """Return contribution for target graph (N_target, D_target)."""
+```
+- `GeomMap` options:
+  - `NearestNeighborMap`: k-NN search in physical space.
+  - `ExplicitLinks`: load from JSON mapping file.
+  - `RegionAverager`: map target nodes to average over a source region.
+- `OscMap` options (Bridge types):
+  - **Bridge A (Subset)**: select dims by index, direct copy.
+  - **Bridge B (Bundle/Average)**: group dims; compute complex mean `ψ = arg Σ e^{iϕ}`.
+  - **Bridge C (Linear)**: matrices `W` (3×6 etc). Store presets.
+  - **Bridge D (PCA)**: compute `P` over sliding window; offline mode.
+- MVP Implementation order:
+  1. Subset (A)
+  2. Bundle (B)
+  3. Linear (C) with static presets
+  4. PCA (D) experimental CLI tool
+- Debugging:
+  - Log per-bridge energy (norm of contribution) each tick; expose to HUD.
+
+3. Visualization & UI Contracts
+-------------------------------
+
+3.1 Avatar Renderer
+~~~~~~~~~~~~~~~~~~~
+- Inputs: per-node position, `phase[:, :3]`, `scope`, analytics overlays.
+- Default mapping:
+  - color HSV = `phase_dim0`
+  - pulse/size = `phase_dim1`
+  - displacement normal offset = `phase_dim2`
+- Provide shader uniforms for:
+  - Scope overlay intensity
+  - Magnetic field lines (Section 5)
+- Front-end uses WebGL/WebGPU via existing reference docs (`reference_webgpu/README.txt`).
+
+3.2 Scope Painting UI
+~~~~~~~~~~~~~~~~~~~~~
+- Tools: brush, eraser, preset apply, temporal envelope slider.
+- Events:
+  - `scope:paint({graph, node_ids, values})`
+  - `scope:preset({id})`
+- Engine receives diff arrays and updates `scope_*`.
+
+4. Analytics Modules
+--------------------
+
+4.1 Spectral Graph Editor
+~~~~~~~~~~~~~~~~~~~~~~~~~
+- Backend (`analytics/spectral.py`):
+  - Build Laplacian `L` with current kernel weights.
+  - Use ARPACK / scipy `eigsh` to compute first M eigenpairs (cache by graph + hash of weights).
+  - Provide APIs:
+    - `get_modes(graph, M)` → `(λ, v)`
+    - `project_state(phase)` → coefficients `a_k = v_k^T f(phase)`
+    - `apply_kernel_edit(mode_id, action)` → returns edge weight deltas for kernel controller.
+- Front-end:
+  - Mode list with λ, textual annotation (precompute heuristics, e.g., gradient direction).
+  - 2D scatter previews for selected mode pairs.
+  - 4D embed feed into existing 4D visualizer pipeline (per user story).
+
+4.2 CDNS Analyzer
+~~~~~~~~~~~~~~~~~
+- Data window:
+  - Maintain circular buffer per region (graph or user-defined cluster). Each entry: timestamp + scalar `S(node)` (choose e.g., `cos phase` or amplitude).
+- Rasterization:
+  - For skin: barycentric raster to 2D texture.
+  - For cardio path: 1D array along geodesic parameter.
+  - For volume: 3D grid or projected 2D slices.
+- Transform:
+  - Compute DCT (use `scipy.fftpack.dct`) per spatial axis; optionally temporal DCT for multi-scale.
+  - Derive normalized spectrum `P`.
+- Metrics:
+  - `entropy = -Σ P log P`
+  - `peakness = max P`
+  - Map to CDNS using heuristic:
+    - `Consonance = peakness * (1 - entropy_norm)`
+    - `Noise = entropy_norm * (1 - peakness)`
+    - `Dissonance = 1 - Consonance - Noise` (clamp 0–1).
+  - Store history for spark lines.
+- API:
+  - `get_cdns(region_id)` → current tuple + history.
+  - `get_cdns_drivers()` → list of nodes/edges contributing most to dissonance (for UI highlights).
+
+4.3 Magnetic Field Overlay (Skin)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- Tangent frame:
+  - Precompute per-triangle tangent basis to convert gradients to 2D vectors.
+- Current estimation:
+  - For each node, compute phase gradient via neighbor differences; convert to tangent current `J_i`.
+  - Alternative: use amplitude * direction-of-change.
+- Field kernel:
+  - Implement Biot–Savart-like kernel for surface:
+    ```python
+    B(x) = Σ_i (J_i × (x - x_i)) / (||x - x_i||^2 + ε)
+    ```
+  - Sample B at surface grid; produce streamline seeds.
+- Visualization:
+  - GPU draws LIC texture or animated streamlines.
+  - Domain segmentation by tracing loops + clustering; derive concentration score = `1 / domain_count`.
+- Feedback hook (off by default):
+  - `dphi += alpha * project(B_i)`; keep alpha user-adjustable but default 0 (equanimity mode).
+
+5. Control & Learning Layer
+---------------------------
+
+5.1 Field Controller Agent
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+- Purpose:
+  - Provide a unified place where policies (scripted, RL, or model-based) decide how to:
+    - adjust scope fields,
+    - tweak kernels/bridges,
+    - and schedule cross-layer interactions (e.g., thermal reservoir probes).
+- Location:
+  - `control/controller.py`
+- Interface:
+  - Inputs:
+    - Observations from analytics: CDNS metrics, spectral mode energies, magnetic concentration score.
+    - Optional external signals: text prompts / goals from a higher-level model (e.g., resonance transformer), thermal reservoir summaries.
+  - Actions:
+    - `controller.apply_scope_ops(ops)` → localized or global scope changes.
+    - `controller.apply_kernel_ops(ops)` → discrete kernel preset switches or continuous parameter nudges.
+    - `controller.apply_bridge_ops(ops)` → change bridge type/preset between layers.
+    - `controller.schedule_reservoir_ops(ops)` → define thermal reservoir probes or annealing sweeps.
+- Implementation outline:
+  - Start with a scripted controller:
+    - Reads CDNS and spectral metrics.
+    - Applies simple rules (e.g., reduce coupling where dissonance is high and noise is high; boost coupling along symmetric modes when consonance is desired).
+  - Later add RL/optimization:
+    - Treat controller as a policy π(o) over discrete episodes (e.g., 10–30 s trajectories).
+    - Reward: combination of CDNS targets, spectral goals, human feedback (Section 5.3).
+
+5.2 Pattern Library & Replay
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- Purpose:
+  - Record and replay “good regimes” of the oscillator field + control actions for:
+    - compositional design (patches/scenes),
+    - controller training,
+    - and qualitative exploration / demos.
+- Location:
+  - `control/pattern_library.py`
+- Data model:
+  - A pattern record includes:
+    - Metadata: id, name, human-readable description, tags (e.g., “chest breathing, symmetric, low noise”).
+    - Configuration snapshot: graphs, kernel parameters, bridge presets, scope fields.
+    - Trajectory summary:
+      - Compact representation (e.g., low-rank projection of state or spectral coefficients over time).
+      - CDNS time series for regions of interest.
+      - Controller action log (scope edits, kernel tweaks, reservoir schedules).
+- APIs:
+  - `record_pattern(run_id, config, trajectory, actions, cdns_series)`.
+  - `list_patterns(filters)` → query by tags or metrics.
+  - `load_pattern(id)` → reconstruct initial config + optional replay trajectory as script.
+  - `morph_patterns(id1, id2, alpha)` → interpolate between presets (kernel weights, scope fields) for creative transitions.
+
+5.3 Human Feedback Loop
+~~~~~~~~~~~~~~~~~~~~~~~
+- Purpose:
+  - Attach simple human ratings to time windows to learn which regimes are subjectively preferable.
+- Location:
+  - `control/feedback.py`
+- Feedback UI:
+  - Provide a small overlay UI panel (or separate client) with:
+    - “Valence” slider or discrete buttons (pleasant / neutral / unpleasant).
+    - “Structure/focus” slider (scattered → focused).
+    - Optional free-text notes.
+- Backend:
+  - For each time window (e.g., 5–10 s), store:
+    - Aggregated analytics features (CDNS, spectral, magnetic, reservoir summaries).
+    - Controller actions during the window.
+    - Human rating(s) and tags.
+  - Use this dataset to:
+    - Train a simple reward model R(feature_vector) → scalar.
+    - Feed R into the controller as:
+      - a reward signal for RL,
+      - or a scoring function for candidate policies/schedules.
+
+5.4 Cross-Modal Bridges (Audio, Text, Gesture)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- Audio bridge:
+  - Map oscillator fields → sound:
+    - e.g., use phase patterns in a region to drive oscillator bank frequencies or filter envelopes.
+  - Map sound → field:
+    - spectral features (MFCCs, onset patterns) drive scope/bridge presets.
+  - Implementation:
+    - Start with offline/off-main-thread audio synthesis driven by CDNS and spectral features.
+- Text bridge:
+  - Integrate with a higher-level model (e.g., resonance transformer) to:
+    - generate target CDNS/spectral goals and scope presets from prompts.
+    - generate descriptions/captions for patterns stored in the pattern library.
+- Gesture bridge:
+  - Map pointer/VR-hand trajectories on the avatar to:
+    - scope paint strokes with temporal smoothing,
+    - parameter changes along “paths” on the body (e.g., “trace a ring to create a traveling wave”).
+  - Encapsulate in a small adapter that turns gesture events into `scope_ops` and `kernel_ops` for the controller.
+
+5.5 Meta-Experiment Runner / Sweeper
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- Purpose:
+  - Systematically explore configuration space (kernel presets, bridge types, reservoir schedules, controller strategies) and log outcomes.
+- Location:
+  - `experiments/sweeper.py`
+- Functionality:
+  - Define experiment configs:
+    - sets of kernel parameters,
+    - bridge types,
+    - controller modes (scripted vs. learned),
+    - reservoir schedules.
+  - Run short episodes for each config:
+    - store CDNS metrics, spectral signatures, magnetic domain counts, and any human feedback.
+  - Produce:
+    - ranked lists of “interesting” configs for human inspection,
+    - data for training reward models or controllers.
+
+5.6 Safety / Guardrail Layer
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- Purpose:
+  - Enforce soft constraints on controller actions to keep system behavior within safe / comfortable envelopes.
+- Location:
+  - `control/safety.py`
+- Responsibilities:
+  - Check proposed controller actions before application:
+    - global scope changes must be bounded in magnitude and rate.
+    - disallowed combinations of kernels/bridges (e.g., known unstable regions).
+    - maximum allowed dissonance or noise in sensitive regions (defined via CDNS thresholds over time).
+  - Provide:
+    - “sandbox” mode for unrestricted exploration.
+    - “experience-safe” mode where the guardrail vetoes or scales down risky actions.
+  - Logging:
+    - log all vetoed or scaled actions for later analysis.
+
+6. Build Order & Milestones
+---------------------------
+
+Milestone 1: Multi-Layer Body w/ Scope + CDNS
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+1. Import anatomical meshes/graphs; validate adjacency and metadata.
+2. Implement simulation engine + kernels for skin & cardio.
+3. Add scope painting + presets.
+4. Wire Bridge A between 3 skin dims and 2 cardio dims.
+5. Build avatar renderer with basic color/pulse channels.
+6. Stand up CDNS analyzer for skin (global + few regions).
+7. QA: unit tests for kernel outputs, bridge contributions, CDNS math.
+
+Milestone 2: Spectral Editor & Kernel Surgery
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+1. Spectral solver + caching.
+2. Front-end selectors + 4D projection integration.
+3. Mode energy meters from live sim.
+4. Kernel tweak actions (boost/suppress) with undo stack.
+5. Add logging to compare eigen spectra before/after edits.
+
+Milestone 3: Magnetic Domains + Advanced Bridges
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+1. Magnetic overlay pipeline, concentration score UI.
+2. Introduce Bridge B presets; expose in UI toggle.
+3. Implement Bridge C with editable matrices; provide sample presets (sensory, motor, aura).
+4. (Optional) offline PCA tool + button to import mapping snapshots.
+
+Milestone 4: Expanded Analytics, Control & Feedback
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+1. Extend CDNS to volume + cardio regions.
+2. Add “CDNS steering” helpers (suggested scope/kernels).
+3. Implement optional magnetic feedback path with user-controlled alpha.
+4. Implement basic field controller (scripted rules) over scope/kernels using CDNS and spectral metrics.
+5. Add pattern recording + simple replay into `control/pattern_library.py`.
+6. Add minimal human feedback collection UI + backend storage.
+7. Implement safety layer with simple constraints on scope change rate and global coupling strength.
+8. Stabilize APIs, write integration tests for analytics outputs and controller actions.
+
+Testing & Instrumentation
+-------------------------
+- Unit tests:
+  - Kernels produce expected coupling on toy graphs.
+  - Bridges conserve dimensions and respect mapping matrices.
+  - Scope painting correctly updates per-node scalars.
+  - CDNS metrics regressions vs. golden spectra.
+- Integration tests:
+  - Run short sim, verify order parameter trajectories.
+  - Spectral editor edits change Laplacian eigenvalues as expected.
+- Logging:
+  - Each tick log (per graph) order parameter R, mean phase velocity, scope extrema.
+  - Per bridge log contribution norms; expose to developer HUD.
+  - Analytics modules emit timing metrics to ensure real-time budget (<5 ms/frame).
+
+Deployment Notes
+----------------
+- Python backend should expose APIs via WebSocket/HTTP for front-end controls.
+- Consider packaging sim as a service with hot-reloadable graph configs.
+- Cache heavy computations (eigenmodes, PCA) to disk in `spectral_cache.py`.
+- Monitor memory: store rolling buffers with configurable length.
+
+Next Actions
+------------
+1. Implement `simulation/state.py` dataclasses + loader for existing anatomical assets.
+2. Stand up kernel registry with skin + cardio kernels.
+3. Build Bridge A path and unit test using synthetic sine waves.
+4. Flesh out CDNS analyzer skeleton and hook into tick loop.
+5. Iterate with design team on UI mocks for spectral editor and overlays.
+

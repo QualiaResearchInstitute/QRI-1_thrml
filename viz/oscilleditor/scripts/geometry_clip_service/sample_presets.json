@@ -1,0 +1,20 @@
+[
+  {
+    "id": "preset_hyper_stable",
+    "text": "hyper-stable frame with slow coherent breathing",
+    "metadata": {
+      "layer": 1,
+      "notes": "Domain mask left half, low frequency spread."
+    }
+  },
+  {
+    "id": "preset_volatile_engine",
+    "text": "volatile engine with chaotic sparks",
+    "metadata": {
+      "layer": 1,
+      "notes": "Right half domain, high coupling variance."
+    }
+  }
+]
+
+

@@ -1,0 +1,174 @@
+Tactile Visualizer & Thermal Reservoir: Theory Alignment Note
+=============================================================
+
+Purpose
+-------
+This note connects the implementation plan for the Tactile Visualizer + thermal reservoir stack to the underlying QRI theory: energy minimization, field-based dynamics, symmetry/valence (STV), annealing, and the Boundary Problem. It is meant to give collaborators a quick map from abstract concepts to concrete modules.
+
+
+1. Thermal Reservoir and `thrml`
+-------------------------------
+
+Theory
+~~~~~~
+- The thermodynamic chip + `thrml` represent a move from simulating dynamics on a Turing machine to letting **physical thermodynamics do the computation**.
+- Energy-based models (EBMs) define energy landscapes over high-dimensional configurations; **minimizing energy** (or sampling near low-energy basins) implements useful computation.
+- Annealing / tempering schedules are the mechanism by which we steer the system through **phase transitions**: heating to escape bad minima, cooling to settle into better, more symmetric ones.
+
+Implementation
+~~~~~~~~~~~~~
+- `thrml` is treated as the **software twin / control language** for the thermodynamic hardware:
+  - `experiments/thermal_reservoir/reservoir_thrml.py` wraps an EBM as a "thermal reservoir" with a small API: reset, run, sweep over temperatures.
+  - Sampling/annealing schedules implemented in `thrml` are the software prototype of how we will drive the physical field (heater patterns, boundary conditions, β schedules).
+- The reservoir is conceptually the "analog dynamical core": we deliberately do not try to fully simulate or analytically solve the underlying field; we treat it as a **black-box high-capacity dynamical system** and learn how to probe it.
+
+
+2. Oscillator Field and Tactile Visualizer
+-----------------------------------------
+
+Theory
+~~~~~~
+- The body-wide oscillator field (skin, volume, cardio graphs) is the **phenomenology surface**: a spatially organized, high-dimensional field where patterns of phase and amplitude correspond to candidate "phenomenal objects".
+- Symmetry Theory of Valence (STV) suggests that:
+  - high valence ≈ high **symmetry and coherence** in these patterns,
+  - low valence / dissonance ≈ fractured, frustrated, or highly asymmetric patterns.
+- CDNS (Consonance, Dissonance, Noise) gives a practical lens on the same idea by quantifying how energy is distributed across spatial/temporal modes.
+
+Implementation
+~~~~~~~~~~~~~
+- The **oscillator field backend** (`simulation/`, `analytics/`) is where we:
+  - define multilayer graphs (skin/volume/cardio),
+  - run Kuramoto-style dynamics to generate waves and coupled oscillations,
+  - compute CDNS and spectral metrics to quantify how "smooth / structured / noisy" the field is.
+- The **tactile visualizer** front-end (`viz/`) renders these fields as:
+  - color, pulse, motion on an avatar, plus overlays (magnetic domains, CDNS regions),
+  - giving a direct, manipulable view of global field structure, symmetries, and transitions.
+- The oscillator field is the object the controller, reservoir, and human all "meet around": it is where thermodynamic computation becomes visually and tactually interpretable.
+
+
+3. Annealing, Trauma, and State Transitions
+-------------------------------------------
+
+Theory
+~~~~~~
+- Annealing is modeled as:
+  - temporarily increasing "temperature" (or analogous control parameters) to loosen rigid patterns,
+  - then gradually cooling to allow the system to re-crystallize into more symmetric, less dissonant configurations.
+- In the QRI framing, this links to:
+  - **neural annealing** as a model for trauma processing and deep learning in the brain,
+  - windows of high entropy followed by reorganization into higher-quality equilibria.
+
+Implementation
+~~~~~~~~~~~~~
+- In software, we realize annealing along two coupled axes:
+  - In the **thermal reservoir**: adjusting β / drive patterns via `thrml` schedules.
+  - In the **oscillator field**: adjusting coupling strengths, scope, and bridge configurations to allow larger-scale reorganization.
+- The controller (Section 5 in the implementation plan) is where we:
+  - define annealing protocols (ramps, pulses, cycles),
+  - observe how CDNS and spectral patterns change during and after anneals,
+  - and learn which schedules/paths through state space yield "better" post-anneal attractors.
+
+
+4. STV, CDNS, and Reward Modeling
+---------------------------------
+
+Theory
+~~~~~~
+- STV posits:
+  - valence ≈ degree of **mathematical symmetry** in the underlying phenomenal object;
+  - practical proxies can be built from frequency-domain structure (e.g., simple, low-entropy spectra correspond to harmonious experiences).
+- CDNS (Consonance, Dissonance, Noise) refines this by:
+  - distinguishing concentrated, harmonious patterns (Consonance),
+  - structured but conflicting patterns (Dissonance),
+  - and diffuse, high-entropy patterns (Noise).
+
+Implementation
+~~~~~~~~~~~~~
+- The **CDNS analyzer** (`analytics/cdns.py`) and **spectral editor** (`analytics/spectral.py`) are where we compute:
+  - spatial/temporal frequency decompositions of the oscillator field,
+  - entropy/peakness metrics,
+  - and per-region CDNS scores.
+- These metrics feed into:
+  - the **controller** as observations (what regime are we in?),
+  - the **reward model** (in `control/feedback.py`) as features for learning what humans rate as good/bad,
+  - and the **pattern library** as descriptors of stored trajectories.
+- In effect, CDNS + spectral features serve as a **practical proxy for valence and structural quality** of the field, which the controller is trained to optimize.
+
+
+5. Boundary Problem, Fields, and Topology
+----------------------------------------
+
+Theory
+~~~~~~
+- The Boundary Problem asks: how do unified, bounded experiences arise from physical systems?
+- QRI’s field-centric stance suggests:
+  - bound experiences correspond to **structured pockets** in underlying physical fields,
+  - with topology and symmetry playing key roles in how those pockets form and persist.
+- Standard digital computation tends to ignore or suppress field-level effects; here, field behavior is central, not incidental.
+
+Implementation
+~~~~~~~~~~~~~
+- The **graph/mesh choices** for the oscillator field (skin, volume, cardio) and the **magnetic overlay** (`analytics/magnetic.py`) are designed to:
+  - support natural formation of field domains (e.g., traveling waves, magnetic-like regions),
+  - allow us to detect and track those domains via clustering, spectral modes, and field lines.
+- Spectral modes and magnetic domains act as candidate representations of **topological pockets**:
+  - the system can stabilize or merge these pockets via kernel and scope adjustments,
+  - and the controller can treat them as units when reasoning about patterns and transitions.
+- The thermal reservoir is another field; coupling it to the oscillator field via bridges and controllers is a step toward **multi-field unified dynamics**, closer to the kind of holistic behavior posited in the theory.
+
+
+6. Learned Controllers and Holistic Computing
+---------------------------------------------
+
+Theory
+~~~~~~
+- Holistic Computing emphasizes:
+  - letting analog substrates do the "hard" high-dimensional relaxation,
+  - while digital systems learn how to set boundary conditions, drives, and reads.
+- In the STV + thermodynamic framing:
+  - the analog side is the Energy-Based Model / thermal field / oscillator body,
+  - the digital side is a trainable wrapper that learns to steer these fields toward high-value regimes.
+
+Implementation
+~~~~~~~~~~~~~
+- The **controller module** (`control/controller.py`) is where we instantiate this pattern:
+  - the controller does not try to "think through" all dynamics in detail,
+  - it instead learns to **probe** the analog core (thermal reservoir + oscillator field) via:
+    - scope painting,
+    - kernel and bridge adjustments,
+    - annealing schedules.
+- The **meta-experiment sweeper** (`experiments/sweeper.py`) supports this by:
+  - running many configurations offline,
+  - collecting CDNS/spectral/magnetic/human feedback,
+  - and yielding data for training better controllers and reward models.
+
+
+7. Human Feedback and Alignment
+-------------------------------
+
+Theory
+~~~~~~
+- Ultimately, the quality of regimes we aim for is **phenomenological**:
+  - pleasantness, clarity, equanimity, richness of experience.
+- Theory gives principled guesses about correlates (symmetry, CDNS structure), but:
+  - direct human feedback is needed to calibrate and refine those proxies.
+
+Implementation
+~~~~~~~~~~~~~
+- The **feedback module** (`control/feedback.py`) closes this loop:
+  - collecting human ratings over windows of time,
+  - associating them with analytics features and controller actions,
+  - and training a reward model that predicts ratings from field/thermal features.
+- This reward model:
+  - guides controller optimization (RL or other),
+  - and helps validate/refine the STV/CDNS-inspired metrics as practical targets for control.
+
+
+8. Summary
+----------
+- `thrml` + the thermodynamic chip act as the **physical/dynamical core**: high-dimensional, analog, energy-minimizing dynamics we steer rather than fully simulate.
+- The Tactile Visualizer's oscillator field provides the **structured, interpretable surface** where we see and manipulate patterns of symmetry, consonance, and dissonance.
+- CDNS, spectral analysis, and magnetic overlays implement **theory-informed metrics and lenses** on those patterns.
+- Controllers, pattern libraries, feedback, sweeps, and safety layers embody a **Holistic Computing and STV-aligned control stack**: digital learning wrapped around analog fields, tuned toward regimes that are both computationally meaningful and phenomenologically high-quality.
+
+
