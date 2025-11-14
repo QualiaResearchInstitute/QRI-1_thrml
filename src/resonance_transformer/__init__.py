@@ -14,7 +14,8 @@ from types import ModuleType
 from typing import Any
 
 # Load the monolithic implementation file (resonance_transformer.py) alongside this package
-_impl_path = Path(__file__).resolve().parent.parent / "resonance_transformer.py"
+# In the standalone collab_package repo, the implementation lives next to this __init__.py.
+_impl_path = Path(__file__).resolve().parent / "resonance_transformer.py"
 
 def _load_impl_module() -> ModuleType:
     spec = importlib.util.spec_from_file_location("_resonance_transformer_impl", str(_impl_path))

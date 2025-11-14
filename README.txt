@@ -24,16 +24,23 @@ Quick Start
    pytest
    ```
 
-3. Thermal reservoir demo:
+3. Resonance Transformer demo (attention head + full model):
+
+   ```bash
+   export PYTHONPATH=src
+   python scripts/resonance_transformer_demo.py
+   ```
+
+4. Thermal reservoir demo:
 
    ```bash
    python -m experiments.thermal_reservoir.controller_loop
    ```
 
-4. STV / EBM experiments:
+5. STV / EBM experiments:
    See `experiments/ebm_llm_kuramoto/README.md` and `RESEARCH_ROADMAP.md`.
 
-5. Visual frontends (oscilleditor / WebGPU reference):
+6. Visual frontends (oscilleditor / WebGPU reference):
    - `viz/oscilleditor/index.html` can be opened in a browser.
    - `viz/reference_webgpu/README.txt` contains integration notes for WebGPU.
 

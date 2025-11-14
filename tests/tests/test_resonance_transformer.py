@@ -17,8 +17,12 @@ try:
         ResonanceTransformerBlock,
         ResonanceTransformer,
     )
-except Exception:
-    pytest.skip("TODO: stabilize resonance_transformer import/shape; guarded for acceptance", allow_module_level=True)
+except Exception as e:
+    pytest.skip(
+        f"resonance_transformer import failed ({e}); "
+        "skipping resonance transformer demo/tests until installation is fixed",
+        allow_module_level=True,
+    )
 
 
 def test_attention_head():
